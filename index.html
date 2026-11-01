@@ -1,0 +1,571 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1f5fbf"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon.svg"></head><body>
+<title>Conteo de Insumos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: una columna tipo app, encabezado fijo con avance + filtros, lista de renglones grandes, barra inferior con 3 pestañas */
+:root{
+  --bg:#f2f4f7; --card:#ffffff; --fg:#172130; --muted:#5a6675; --line:#d9dfe7;
+  --accent:#1f5fbf; --accent-soft:#e1ebf8; --on-accent:#ffffff;
+  --warn:#a3520b; --warn-soft:#fbe9d5; --ok:#1d7a46; --ok-soft:#dcefe3;
+  --crit:#b3261e; --crit-soft:#f9dedc; --field:#ffffff; --field-line:#1f5fbf;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",ui-sans-serif,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --card:#18202a; --fg:#e6ebf2; --muted:#98a4b3; --line:#2a3441;
+  --accent:#8ab8ff; --accent-soft:#1f2f47; --on-accent:#0b1420;
+  --warn:#f0a35a; --warn-soft:#3a2a18; --ok:#6fd39c; --ok-soft:#1f3a2c;
+  --crit:#ff8a80; --crit-soft:#451f1c; --field:#34404f; --field-line:#8ab8ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --card:#18202a; --fg:#e6ebf2; --muted:#98a4b3; --line:#2a3441;
+  --accent:#8ab8ff; --accent-soft:#1f2f47; --on-accent:#0b1420;
+  --warn:#f0a35a; --warn-soft:#3a2a18; --ok:#6fd39c; --ok-soft:#1f3a2c;
+  --crit:#ff8a80; --crit-soft:#451f1c; --field:#34404f; --field-line:#8ab8ff; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.4}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 96px}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;display:grid;gap:7px;border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:800;font-size:1.15rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.prog{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;white-space:nowrap}
+.prog b{color:var(--fg)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+input[type=search]{width:100%;font:inherit;padding:9px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;font:inherit;font-size:.84rem;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.toggles{display:flex;gap:16px;flex-wrap:wrap;font-size:.92rem;color:var(--muted)}
+.toggles label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.toggles input{width:18px;height:18px;accent-color:var(--accent)}
+.info{flex:1;min-width:0}
+.meta{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--warn);color:var(--card)}
+.empty{text-align:center;color:var(--muted);padding:40px 0}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+nav button{flex:1;max-width:240px;font:inherit;font-weight:700;font-size:.95rem;padding:14px 6px;border:none;background:none;color:var(--muted);cursor:pointer;border-top:3px solid transparent}
+nav button[aria-selected=true]{color:var(--accent);border-top-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.tile b{display:block;font-family:var(--display);font-size:1.6rem;font-variant-numeric:tabular-nums}
+.tile span{font-size:.8rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:8px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:.92rem}
+th{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+td.n{text-align:right;font-weight:700}
+tr:last-child td{border-bottom:none}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.btn{font:inherit;font-weight:700;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.danger{color:var(--warn)}
+.note{font-size:.85rem;color:var(--muted);margin-top:10px}
+.confirm{margin-top:10px;padding:12px;border-radius:12px;background:var(--warn-soft);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.addf{display:grid;gap:6px;margin-top:16px;padding:14px;background:var(--card);border:1px solid var(--accent);border-radius:14px}
+.addf label{font-size:.85rem;font-weight:700;margin-top:6px}
+.addf input,.addf select{width:100%;font:inherit;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.addf #aErr,.err{color:var(--warn)}
+.noname{color:var(--muted);font-style:italic}
+.row.edit{border-color:var(--accent)}
+.per,.addf input[type=date]{width:100%;font:inherit;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+tr.grp td{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg);padding-block:6px}
+.ex{margin-top:14px;padding:14px;border:1px dashed var(--line);border-radius:14px}
+.btn:disabled{opacity:.5;cursor:default}
+.cat{font-family:var(--display);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 5px}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.name{font-weight:700;font-size:.9rem;line-height:1.2;overflow-wrap:anywhere}
+.tot{flex:none;width:68px;height:40px;padding:0 3px;display:grid;place-items:center;text-align:center;white-space:nowrap;overflow:hidden;border:none;border-radius:9px;font-family:var(--display);font-weight:800;font-size:1.1rem;font-variant-numeric:tabular-nums;background:none;color:var(--muted)}
+button.tot{cursor:pointer}
+.tot.ok{background:var(--ok-soft);color:var(--ok)}
+.tot.warn{background:var(--warn-soft);color:var(--warn)}
+.tot.crit{background:var(--crit);color:var(--card)}
+.tot.l5{font-size:.95rem}
+.tot.l7{font-size:.76rem;letter-spacing:-.02em}
+.sync{font-size:.8rem;color:var(--muted);margin-top:6px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-left:8px;vertical-align:middle}
+.dot.on{background:var(--ok)}.dot.off{background:var(--warn)}
+.gate{position:fixed;inset:0;z-index:20;background:var(--bg);display:grid;place-items:center;padding:24px}
+.gate form{width:100%;max-width:380px}
+.gate h2{font-family:var(--display);margin:0 0 4px}
+.step{display:flex;align-items:center;gap:3px;flex:none}
+.step button{width:36px;height:42px;border-radius:9px;border:none;background:var(--accent-soft);color:var(--accent);font-size:1.3rem;font-weight:700;cursor:pointer;touch-action:manipulation}
+.step button:active{transform:scale(.94)}
+.step input{width:64px;height:42px;text-align:center;font:inherit;font-weight:700;font-size:1.05rem;border-radius:9px;border:2px solid var(--field-line);background:var(--field);color:var(--fg);font-variant-numeric:tabular-nums}
+.step input::placeholder{color:var(--muted);font-weight:400}
+.minin{width:72px}
+.detail{flex:1 1 100%;display:flex;justify-content:flex-end}
+.btn.sm{padding:7px 12px;font-size:.85rem}
+.toast{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:7;max-width:688px;margin:0 auto;padding:11px 14px;border-radius:12px;background:var(--fg);color:var(--bg);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.9rem}
+.toast span{min-width:0;overflow-wrap:anywhere}
+.toast .lnk{color:var(--bg);font-size:.9rem;flex:none}
+.tools{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}
+.ml{font-size:.78rem;font-weight:700;color:var(--muted);margin-right:5px}
+.trash{display:inline-grid;place-items:center;width:30px;height:26px;border:none;border-radius:7px;background:var(--crit-soft);color:var(--crit);cursor:pointer}
+.ask{color:var(--fg);font-weight:700}
+.lnk.danger{color:var(--crit)}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.drop{display:grid;justify-items:center;gap:4px;margin:0;padding:26px 16px;text-align:center;font-size:1rem;font-weight:400;border:2px dashed var(--field-line);border-radius:12px;background:var(--accent-soft);color:var(--accent);cursor:pointer}
+.drop b{font-family:var(--display);font-size:1.05rem}
+.drop span{font-size:.85rem;color:var(--muted)}
+.drop.over{background:var(--field)}
+.vh:focus-visible+.drop{outline:3px solid var(--accent);outline-offset:2px}
+.tag.new{background:var(--accent);color:var(--on-accent)}
+.lnk{font:inherit;font-size:.8rem;font-weight:700;background:none;border:none;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer}
+textarea{width:100%;min-height:120px;margin-top:10px;font:12px ui-monospace,monospace;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="top"><h1><span id="ttl">Conteo de insumos</span><span class="dot" id="dot" title="Conexión"></span></h1><div class="prog" id="prog"></div></div>
+  <div class="bar"><i id="barfill"></i></div>
+  <input type="search" id="q" placeholder="Buscar por nombre o código SAP" autocomplete="off">
+  <div class="chips" id="chips"></div>
+</header>
+<div class="tools" id="toggles">
+  <div class="toggles">
+    <label><input type="checkbox" id="fPend"> Solo sin contar</label>
+    <label><input type="checkbox" id="fLow"> Solo faltantes</label>
+  </div>
+  <button class="btn sm" id="bAdd" aria-label="Agregar producto">+ Agregar</button>
+</div>
+<main id="main"></main>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="gate" id="gate" hidden><form class="addf" id="fGate" novalidate>
+  <h2>Conteo de insumos</h2><p class="note" style="margin:0">Escribe el PIN de la tienda. Todos los que usen el mismo PIN ven el mismo conteo, en vivo.</p>
+  <label for="gPin">PIN de la tienda</label><input id="gPin" inputmode="numeric" autocomplete="off" required>
+  <label for="gName">Tu nombre</label><input id="gName" autocomplete="off" placeholder="Ej. Marco">
+  <p class="note err" id="gErr" hidden></p>
+  <div class="actions" style="margin-top:4px"><button class="btn pri" type="submit">Entrar</button></div>
+</form></div>
+<nav role="tablist">
+  <button role="tab" data-v="contar" aria-selected="true">Contar</button>
+  <button role="tab" data-v="minimos" aria-selected="false">Catálogo</button>
+  <button role="tab" data-v="consumo" aria-selected="false">Consumo</button>
+  <button role="tab" data-v="resumen" aria-selected="false">Resumen</button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+const DATA={"cats":["Desechables","Vasos y tapas","Endulzantes y especias","Alimentos","Panadería y postres","Chocolates y snacks","Bebidas embotelladas","Café de barra","Café para venta","Leches","Jarabes","Salsas, bases y concentrados","Polvos, tés y toppings","Limpieza","Papelería y operación"],"items":[{"id":0,"sap":"149290","n":"Bagel Tradicional","c":3},{"id":1,"sap":"161933","n":"Tarta De Chocolate Y Almendra Cj","c":3},{"id":2,"sap":"149395","n":"Tarta Moras C/Chocolatebco","c":3},{"id":3,"sap":"149403","n":"012854 Food Traveler","c":0},{"id":4,"sap":"149619","n":"015552 Splenda Fruta Del Monje","c":2},{"id":5,"sap":"149818","n":"57102 C500p Popote Papel Pearls","c":0},{"id":6,"sap":"149274","n":"Agitador De Madera","c":0},{"id":7,"sap":"149238","n":"Azucar Dieta Splenda","c":2},{"id":8,"sap":"149271","n":"Azucar Mascabado Starbucks","c":2},{"id":9,"sap":"149316","n":"Azucar Refinada Starbucks","c":2},{"id":10,"sap":"149272","n":"Svetia Cj/2000 Pzas Sbx","c":2},{"id":11,"sap":"149223","n":"Bolsa Con Asa Chica","c":0},{"id":12,"sap":"152628","n":"Bolsa Galleta","c":0},{"id":13,"sap":"149276","n":"Bolsa Individual Pastry","c":0},{"id":14,"sap":"149430","n":"Bolsa Pastry Panini","c":0},{"id":15,"sap":"150170","n":"Canela Molida Cj/Lkg","c":2},{"id":16,"sap":"149231","n":"Charolaporta Vasos","c":0},{"id":17,"sap":"150452","n":"Contenedor Almeja 6 Pulg De Plas","c":0},{"id":18,"sap":"149254","n":"Fajillacarton 12/160z Cj1500pza","c":0},{"id":19,"sap":"155919","n":"Filtra Para Cafetera 14*6 100369 Sbx","c":0},{"id":20,"sap":"149387","n":"Popote Verde Estuchado Compostab","c":0},{"id":21,"sap":"149483","n":"Portavasos 2 Cavidades Cj/600pz","c":0},{"id":22,"sap":"155918","n":"Servilleta Logo 2025","c":0},{"id":23,"sap":"154135","n":"Cuchara Madera Sbx Cj10bol100pzas","c":0},{"id":24,"sap":"154137","n":"Cuchillo Madera Sbx Cj10bol100pzas","c":0},{"id":25,"sap":"154136","n":"Tenedor Madera Sbx Cj10boli100pzas","c":0},{"id":26,"sap":"149415","n":"Aderezo Chipotle Heinz 390 Gr","c":3},{"id":27,"sap":"149972","n":"Blister Aguacate","c":3},{"id":28,"sap":"154154","n":"Blister Chipotle","c":3},{"id":29,"sap":"149438","n":"Chorizopamplona 500 Gr","c":3},{"id":30,"sap":"149623","n":"Lomo De Cerdo Canadiense Paq/500","c":3},{"id":31,"sap":"149567","n":"Mermeladachabacano Cu72pzas28gr","c":3},{"id":32,"sap":"149568","n":"Mermelada Fresa St Dalfour Cja/7","c":3},{"id":33,"sap":"149463","n":"Pechuga De Pavo 500grs","c":3},{"id":34,"sap":"149280","n":"Queso Crema","c":3},{"id":35,"sap":"149469","n":"Queso Manchego 500grs","c":3},{"id":36,"sap":"156334","n":"Bis Nal Super Croissant Ci40pzas","c":4},{"id":37,"sap":"149682","n":"Cookie Straw Cj/6 Lta/25 Pzas","c":5},{"id":38,"sap":"141764","n":"Chocolate Bearista Summer Mod 2 Cj35pzas20gr","c":5},{"id":39,"sap":"162061","n":"Choc Bearista Fall Modn 3 Cj35pzs20gr","c":5},{"id":40,"sap":"162062","n":"Choc Bearista Fall Mod 4 Cj35spzas75gr","c":5},{"id":41,"sap":"154152","n":"Chocolate Bearista Soccer Cj3spzas20gr","c":5},{"id":42,"sap":"149268","n":"Dulces Tejas Almendras","c":4},{"id":43,"sap":"150160","n":"Galleta De Temporada","c":4},{"id":44,"sap":"149694","n":"Galleta Pumpkin","c":4},{"id":45,"sap":"149482","n":"Macarones","c":4},{"id":46,"sap":"161765","n":"Mango Enchilado","c":4},{"id":47,"sap":"150057","n":"Nueces Y Frutas Secas","c":4},{"id":48,"sap":"149359","n":"Pan De Muerto C/12 Pzas","c":4},{"id":49,"sap":"161766","n":"Panmuertoavella","c":4},{"id":50,"sap":"161767","n":"Panmuertoqueso","c":4},{"id":51,"sap":"161768","n":"Panmuertotrad","c":4},{"id":52,"sap":"149465","n":"Waffle Belga","c":4},{"id":53,"sap":"154134","n":"Dona G&G","c":4},{"id":54,"sap":"155958","n":"Bisgalleta Chispas/Choco Cj","c":4},{"id":55,"sap":"152555","n":"Bis Galleta Choco Chunks Cj","c":4},{"id":56,"sap":"152557","n":"Bis Galletadubaicj","c":4},{"id":57,"sap":"","n":"Bis Galleta Dulce De Leche Cj","c":4},{"id":58,"sap":"149734","n":"Bis Nal Cheesecake Roulet Maxi C","c":4},{"id":59,"sap":"149736","n":"Bis Nal Croissant Curvo Con Sermi","c":4},{"id":60,"sap":"149956","n":"Bis Pan De Chocolate Margarina C","c":4},{"id":61,"sap":"149460","n":"Bspan Queso Crudo Act","c":4},{"id":62,"sap":"149557","n":"Cake Pop Chocolate Cja/12 Bliste","c":4},{"id":63,"sap":"161076","n":"Cake Pop Erizo Cj/36 Pzas","c":4},{"id":64,"sap":"163006","n":"Cakepop Bearista Cj12blist3pza39gr","c":4},{"id":65,"sap":"149556","n":"Cake Pop Vainilla Cumpleanos Cja","c":4},{"id":66,"sap":"149299","n":"Cheesecake Brulee Framb","c":4},{"id":67,"sap":"149874","n":"Cronuts Chocolate","c":4},{"id":68,"sap":"161815","n":"Dona Dark Caramel Cj/36 Pzas","c":4},{"id":69,"sap":"149450","n":"Dona Doble Chocolate","c":4},{"id":70,"sap":"149887","n":"Pan De Elote","c":4},{"id":71,"sap":"149305","n":"Panque Limon","c":4},{"id":72,"sap":"149300","n":"Pastel Classic Chocolate","c":4},{"id":73,"sap":"149416","n":"Pastel De Zanahoria Nuevo","c":4},{"id":74,"sap":"149891","n":"Rol De Canela Ci/10 Pzas/130gr S","c":4},{"id":75,"sap":"149881","n":"Serv Dist Panque De Naranja Ci/1","c":4},{"id":76,"sap":"149283","n":"Agua De Coco Ritd","c":6},{"id":77,"sap":"149270","n":"Agua Evian","c":6},{"id":78,"sap":"149273","n":"Aranchiatta","c":6},{"id":79,"sap":"149367","n":"Casaagua Gasific","c":6},{"id":80,"sap":"149366","n":"Casaagua Natural","c":6},{"id":81,"sap":"149885","n":"Shot Magicr","c":6},{"id":82,"sap":"159940","n":"72763 C4b Cafeblonde Espr 2.27kg","c":7},{"id":83,"sap":"149229","n":"Cafe Chiapas 5 Lb","c":7},{"id":84,"sap":"149292","n":"Cafe Cold Brew 5 Lb","c":7},{"id":85,"sap":"149214","n":"Cafe Decaf Espresso Roast 5 Lb","c":7},{"id":86,"sap":"149213","n":"Cafe Espresso Roast 5 Lb","c":7},{"id":87,"sap":"149234","n":"7387 Cab Café Xm Sl","c":7},{"id":88,"sap":"162053","n":"Cafe1971 5 Lb","c":7},{"id":89,"sap":"149651","n":"52649 C4b Lavender Powder Ci/4b","c":12},{"id":90,"sap":"149277","n":"7991 Topping De Calabaza2","c":12},{"id":91,"sap":"153718","n":"C16b Dairy Protein Powder 200grs","c":12},{"id":92,"sap":"149404","n":"Etiqueta De Seguridad","c":14},{"id":93,"sap":"149563","n":"Freeze Dried Strawberry 12/50g","c":12},{"id":94,"sap":"149294","n":"Galletaoreo Troceada Bol/500gr","c":12},{"id":95,"sap":"150481","n":"Rollo Pap Térm Liner Bixo Cj/32","c":14},{"id":96,"sap":"149312","n":"Te Chamomile C/100","c":12},{"id":97,"sap":"149313","n":"Te Hibiscus C/100","c":12},{"id":98,"sap":"149314","n":"Te Mint Blend C/100","c":12},{"id":99,"sap":"143907","n":"14437 C20p Te Black Iced Teavana Btb","c":12},{"id":100,"sap":"149296","n":"Te Teavana Green Lced Cj/24","c":12},{"id":101,"sap":"149297","n":"Te Teavana Passion Lced Cj/24","c":12},{"id":102,"sap":"149251","n":"92599 Ip Toffe Nut Sprinkles Ll Oz","c":12},{"id":103,"sap":"149266","n":"63208 Lp Topping Cranberry Drizzle Pza","c":12},{"id":104,"sap":"149462","n":"30179 1b Topping Caramel Sugar 6 Oz","c":12},{"id":105,"sap":"149267","n":"23893 Ip Topping Cranberry Sugar","c":12},{"id":106,"sap":"162031","n":"Topping Pecan Crunch","c":12},{"id":107,"sap":"149790","n":"16086-Frapuccino Base Local Coff","c":11},{"id":108,"sap":"149873","n":"16191bebida De Avena Ci/6 Li","c":9},{"id":109,"sap":"149746","n":"55802csb Raspberry Flavoured Pe","c":11},{"id":110,"sap":"149747","n":"57334 C6p Base Summer Berry 4x 1","c":11},{"id":111,"sap":"155868","n":"74136 C8b Leche Coconut 1.89lt","c":9},{"id":112,"sap":"149455","n":"Base De Mangodragonfruit 1litro","c":11},{"id":113,"sap":"","n":"Base Frappuccino Creme Syrup 3.0","c":11},{"id":114,"sap":"149351","n":"Chocolate Abuela 1 Kg","c":11},{"id":115,"sap":"149327","n":"Chunks Chocolate Bolsa 500 G","c":11},{"id":116,"sap":"149281","n":"Concentrado Piñacoco Bte Llt","c":11},{"id":117,"sap":"149280","n":"Concentrado Zarzamora Bte 1lt","c":11},{"id":118,"sap":"149547","n":"Crema Para Batir Cja/12 Pzas/950","c":9},{"id":119,"sap":"149386","n":"Inclusion Dragon Fruit Liof C/12","c":11},{"id":120,"sap":"149370","n":"Jarabeavellana L Lt","c":10},{"id":121,"sap":"149536","n":"Jarabe Brown Sugar 1 Lt","c":10},{"id":122,"sap":"149320","n":"Jarabe Caramelo 1 Lt","c":10},{"id":123,"sap":"149371","n":"Jarabe Cinnamon Dolce 1lt","c":10},{"id":124,"sap":"149318","n":"Jarabe Classic 1lt","c":10},{"id":125,"sap":"149325","n":"Jarabe Coco 1 Lt","c":10},{"id":126,"sap":"162030","n":"Jarabe De Nuez Pekana","c":10},{"id":127,"sap":"149322","n":"Jarabe Frambuesa 1 Lt","c":10},{"id":128,"sap":"149323","n":"Jarabe Peppermint1 Lt","c":10},{"id":129,"sap":"149321","n":"Jarabe S Free Vainilla 1 Lt","c":10},{"id":130,"sap":"149319","n":"Jarabevainilla L Lt","c":10},{"id":131,"sap":"149492","n":"Jarabe White Mocha 750 Ml","c":10},{"id":132,"sap":"149457","n":"Leche De Almendras Cj/6pzas","c":9},{"id":133,"sap":"149278","n":"Leche Half & Half Borden","c":9},{"id":134,"sap":"149250","n":"Leche Soya","c":9},{"id":135,"sap":"149399","n":"Matchasin Azucar","c":11},{"id":136,"sap":"149215","n":"Mocha Powder","c":11},{"id":137,"sap":"155869","n":"Polvo Scbb 24/56.7","c":11},{"id":138,"sap":"150058","n":"Prep P/Bebida Limon Ci12pzasilt","c":11},{"id":139,"sap":"149310","n":"Salsa De Calabaza","c":11},{"id":140,"sap":"149540","n":"Salsa De Caramelo Para Bebida Cj","c":11},{"id":141,"sap":"149253","n":"Salsade Dulce Leche 46 Oz","c":11},{"id":142,"sap":"149650","n":"Salsa De Fresa Ci/12 Pzas/1 Lt S","c":11},{"id":143,"sap":"149260","n":"Salsa De Limon 46 Oz","c":11},{"id":144,"sap":"149454","n":"Strawberry Acai Juice 6/1lt","c":11},{"id":145,"sap":"149216","n":"Te Tazo Chai Concentrado","c":11},{"id":146,"sap":"162052","n":"Cafe 1971 250g","c":8},{"id":147,"sap":"149308","n":"Cafe 250g 12/Cs Chiapas","c":8},{"id":148,"sap":"149240","n":"Cafe 250g 12/Cs Colombia Nsup","c":8},{"id":149,"sap":"149241","n":"Cafe 250g 12/Cs Espreso","c":8},{"id":150,"sap":"149242","n":"Cafe250g 12/Cs Kenya","c":8},{"id":151,"sap":"149243","n":"Cafe 250g 12/Cs Sumatra","c":8},{"id":152,"sap":"149244","n":"Cafe 250g 12/Cs Verona","c":8},{"id":153,"sap":"149394","n":"Pike Place Roast","c":8},{"id":154,"sap":"163528","n":"81945 C12b Café Christmas Decaf 250gr","c":8},{"id":155,"sap":"162052","n":"84770 C12b Café 1971 Roast 250gr","c":8},{"id":156,"sap":"","n":"Ess Reusable Cup","c":14},{"id":157,"sap":"150247","n":"001378 Guantes Desechables","c":13},{"id":158,"sap":"150321","n":"002194 Toallapapel Interdoblada","c":13},{"id":159,"sap":"150379","n":"Key Sanitizante Plus","c":13},{"id":160,"sap":"150262","n":"002222 Lavance 100 Detergente","c":13},{"id":161,"sap":"150263","n":"002223 Lavance 145 Enjuague","c":13},{"id":162,"sap":"150266","n":"002888 Multiusos Key","c":13},{"id":163,"sap":"150269","n":"004200 Mandilverde","c":13},{"id":164,"sap":"149275","n":"007677 Sirenitas Agitador To Go","c":0},{"id":165,"sap":"149289","n":"009920papel Ppastries Tissue","c":0},{"id":166,"sap":"150321","n":"011177 Kit Para Nuevos Ingresos","c":14},{"id":167,"sap":"150331","n":"011991bolsa Basura Gris","c":13},{"id":168,"sap":"150333","n":"011993 Bolsa Basura Naranja Gran","c":13},{"id":169,"sap":"150339","n":"012303 Vitafilm","c":13},{"id":170,"sap":"150331","n":"Bolsa De Basura Grande Gris Cal","c":13},{"id":171,"sap":"150403","n":"Etiqueta Delivery Ciere De Bols","c":14},{"id":172,"sap":"150404","n":"Etiqueta Delivery Para Bebidas C","c":14},{"id":173,"sap":"150351","n":"Etiquetas Precio Pisto Roll/1000","c":14},{"id":174,"sap":"154020","n":"Fibra Blanca 3m Pza","c":13},{"id":175,"sap":"150288","n":"Holder Lid 3-Slot 375399 1 Pza","c":14},{"id":176,"sap":"150380","n":"Keyjabon Espuma Almendras","c":13},{"id":177,"sap":"150377","n":"Key Limpia Baiosmarmol","c":13},{"id":178,"sap":"150394","n":"Marcadornegro Azor Cja/12 Pzas","c":14},{"id":179,"sap":"153042","n":"Papel Higienico Jumbojrcj/6 Rol","c":13},{"id":180,"sap":"150483","n":"Red Para Cabellocj/144 Pzas Sbx","c":14},{"id":181,"sap":"150419","n":"Repuesto Trapeador Amarillo Medi","c":13},{"id":182,"sap":"150470","n":"Rollo Termico Nvaimpresion Cj/S","c":14},{"id":183,"sap":"155756","n":"Microfibra 20x20cmverde Cj50pzas","c":13},{"id":184,"sap":"155755","n":"Microfibra 20x20cm Rojo Cjs0pzas","c":13},{"id":185,"sap":"155759","n":"Microfibra 20x20amar Cj50pzas","c":13},{"id":186,"sap":"155758","n":"Microfibra 20x20 Azul Cis0pz","c":13},{"id":187,"sap":"150388","n":"Tela Amarilla De Limpieza","c":13},{"id":188,"sap":"150387","n":"Telablanca Para Limpieza","c":13},{"id":189,"sap":"150345","n":"Tela Azul","c":13},{"id":190,"sap":"150487","n":"Toner Cf226a P Imp Hp M402 M426","c":14},{"id":191,"sap":"149324","n":"Cargadores De N20para Sifon","c":11},{"id":192,"sap":"149413","n":"Coffee Traveler 96 Oz","c":1},{"id":193,"sap":"149352","n":"Tapa 16/20oz Hot Delivery","c":1},{"id":194,"sap":"149232","n":"Tapa 16/20 Oz Hot Traveler","c":1},{"id":195,"sap":"149225","n":"Tapa 8 Oz Hot Traveler","c":1},{"id":196,"sap":"149218","n":"Tapa Domo 12/20 Oz","c":1},{"id":197,"sap":"149219","n":"Tapa Domo 16 Oz","c":1},{"id":198,"sap":"149368","n":"Tapa Nitro Para Vasos 12/20 Oz","c":1},{"id":199,"sap":"149369","n":"Tapa Nitro Para Vasos 16 Oz","c":1},{"id":200,"sap":"149220","n":"Tapa Plana 12/20 Oz","c":1},{"id":201,"sap":"149221","n":"Tapa Plana 16 Oz","c":1},{"id":202,"sap":"149227","n":"Vasode Papel 12 Oz","c":1},{"id":203,"sap":"149228","n":"Vaso De Papel 16 Oz","c":1},{"id":204,"sap":"149222","n":"Vaso De Papel 20 Oz","c":1},{"id":205,"sap":"149264","n":"Vasode Papel 8 Oz","c":1},{"id":206,"sap":"149255","n":"Vaso De Plastico 12 Oz","c":1},{"id":207,"sap":"149256","n":"Vaso De Plastico 16 Oz","c":1},{"id":208,"sap":"149269","n":"Vaso De Plastico 20 Oz","c":1}]};
+/* Recetas: {b: nombre como sale en el reporte del POS, i: [[id insumo, cantidad, unidad]]}. Se llenan con las recetas reales. */
+const RECIPES=[];
+const EXAMPLE={
+  recipes:[
+    {b:'Caramel Macchiato Grande',i:[[86,14,'g'],[130,30,'ml'],[140,10,'ml'],[203,1,'pza'],[201,1,'pza']]},
+    {b:'Mocha Alto',i:[[86,14,'g'],[136,20,'g'],[118,15,'ml'],[202,1,'pza'],[200,1,'pza']]},
+    {b:'Frappuccino Caramelo Grande',i:[[107,90,'ml'],[122,22,'ml'],[140,10,'ml'],[207,1,'pza'],[197,1,'pza']]},
+    {b:'Latte Almendra Grande',i:[[132,300,'ml'],[86,14,'g'],[203,1,'pza'],[201,1,'pza']]}],
+  sales:[['Caramel Macchiato Grande',34],['Mocha Alto',21],['Frappuccino Caramelo Grande',27],['Latte Almendra Grande',12],['Galleta Pumpkin',5],['Te Verde Helado Venti',9]]
+};
+const KEY='sbx-conteo-v1';
+let st={count:{},min:{},extra:[],edit:{},sales:{},log:{}};
+const items=()=>DATA.items.concat(st.extra).map(it=>st.edit[it.id]?Object.assign({},it,st.edit[it.id]):it);
+let adding=false,addMsg='',removeId=null,editId=null,openId=null,toastT=null;
+const TRASH='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>';
+const UPLOAD='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9M12 12v8M8.5 15.5 12 12l3.5 3.5"/></svg>';
+const btnRun={}; /* id -> true mientras se toca + o − seguido, para juntar esos toques en un solo renglón */
+/* Guardado compartido: Firestore. Cada producto contado es un documento; las sumas usan incrementos,
+   así dos personas pueden sumar al mismo producto a la vez sin pisarse. */
+const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+let fs=null,root=null,FV=null,ME=ls.get('sbx-nombre')||'',online=null,pendingRender=false;
+const save=()=>{};
+function setSync(){const d=$('dot');if(d){d.className='dot'+(online===true?' on':online===false?' off':'');d.title=syncMsg()}
+  const el=document.querySelector('.sync');if(el)el.textContent=syncMsg()}
+function syncMsg(){return online===true?'En vivo: lo que cualquiera cuente con el PIN de la tienda se ve aquí al momento.':online===false?'Sin conexión: lo que cuentes se guarda en este aparato y se envía solo al volver el internet.':'Conectando…'}
+const busy=()=>{const a=document.activeElement;return editId!==null||adding||(a&&a.tagName!=='BUTTON'&&$('main').contains(a))};
+function softRender(ids){
+  if(ids&&(view==='contar'||view==='minimos')){ids.forEach(id=>{const el=document.querySelector(`.row[data-id="${id}"]`);
+    if(el&&!el.contains(document.activeElement))refreshRow(+id);else if(el)pendingRender=true});progress();return}
+  if(busy()){pendingRender=true;progress();return}
+  render();
+}
+document.addEventListener('focusout',()=>setTimeout(()=>{if(pendingRender&&!busy()){pendingRender=false;render()}},50));
+const myLast=id=>{const l=st.log[id]||[];for(let i=l.length-1;i>=0;i--)if(l[i].w===ME)return l[i];return null};
+const entry=n=>({n,w:ME,t:Date.now()+Math.random()});
+const cRef=id=>root.collection('conteo').doc(String(id));
+const cfg=()=>root.collection('config').doc('catalogo');
+function writeErr(e){console.error(e);const t=$('toast');t.innerHTML='<span>No se pudo guardar: '+esc(e.message||e)+'</span>';t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,6000)}
+function subscribe(){
+  root.collection('conteo').onSnapshot({includeMetadataChanges:true},s=>{
+    online=!s.metadata.fromCache;setSync();
+    const c={},l={};s.forEach(d=>{const v=d.data();if(typeof v.total==='number'){c[d.id]=Math.round(v.total*100)/100;l[d.id]=(v.log||[]).slice().sort((a,b)=>a.t-b.t)}});
+    const ids=new Set([...Object.keys(c),...Object.keys(st.count)].filter(k=>c[k]!==st.count[k]||JSON.stringify(l[k])!==JSON.stringify(st.log[k])));
+    st.count=c;st.log=l;if(ids.size)softRender(view==='contar'||view==='minimos'?[...ids]:null);
+  },writeErr);
+  cfg().onSnapshot(d=>{const v=d.data()||{};st.min=v.min||{};st.extra=Object.values(v.extra||{}).sort((a,b)=>a.id-b.id);st.edit=v.edit||{};softRender()},writeErr);
+  root.collection('ventas').onSnapshot(s=>{const o={};s.forEach(d=>{o[d.id]=Object.entries(d.data().q||{})});st.sales=o;if(view==='consumo')softRender()},writeErr);
+  window.addEventListener('online',()=>{online=null;setSync()});window.addEventListener('offline',()=>{online=false;setSync()});
+}
+async function tienda(pin){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('sbx-tienda:'+pin));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,40)}
+async function start(pin){
+  if(!fs){firebase.initializeApp(window.FIREBASE_CONFIG);fs=firebase.firestore();FV=firebase.firestore.FieldValue;
+    try{await fs.enablePersistence({synchronizeTabs:true})}catch(e){}
+    await firebase.auth().signInAnonymously();}
+  root=fs.collection('tiendas').doc(await tienda(pin));subscribe();
+}
+function gate(){
+  if(!window.FIREBASE_CONFIG||!window.firebase){$('main').innerHTML='<p class="note err">Falta configurar la base de datos (config.js) o no hay internet para cargarla.</p>';return}
+  const pin=ls.get('sbx-pin');
+  if(pin&&ME){start(pin).catch(writeErr);return}
+  $('gate').hidden=false;$('gName').value=ME;
+  $('fGate').onsubmit=async e=>{e.preventDefault();const p=$('gPin').value.trim(),n=$('gName').value.trim(),err=$('gErr');
+    if(p.length<4){err.textContent='El PIN lleva al menos 4 caracteres.';err.hidden=false;return}
+    if(!n){err.textContent='Escribe tu nombre para saber quién contó qué.';err.hidden=false;return}
+    ls.set('sbx-pin',p);ls.set('sbx-nombre',n);ME=n;$('gate').hidden=true;
+    try{await start(p)}catch(x){writeErr(x)}};
+}
+function salir(){ls.set('sbx-pin','');location.reload()}
+let view='contar',cat=-1,confirmReset=false;
+const $=id=>document.getElementById(id);
+const has=v=>v!==undefined&&v!==null&&v!=='';
+const isLow=it=>has(st.min[it.id])&&has(st.count[it.id])&&+st.count[it.id]<+st.min[it.id];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function chips(){
+  const c=$('chips');c.innerHTML='';
+  [['Todo',-1],...DATA.cats.map((n,i)=>[n,i])].forEach(([n,i])=>{
+    const b=document.createElement('button');b.className='chip';b.textContent=n;b.setAttribute('aria-pressed',cat===i);
+    b.onclick=()=>{cat=i;chips();render()};c.appendChild(b)});
+}
+function progress(){
+  const done=items().filter(it=>has(st.count[it.id])).length,t=items().length;
+  $('prog').innerHTML=`<b>${done}</b> de ${t} contados`;
+  $('barfill').style.width=(done/t*100)+'%';
+}
+function filtered(){
+  const q=$('q').value.trim().toLowerCase();
+  return items().filter(it=>(cat<0||it.c===cat)&&(!q||it.n.toLowerCase().includes(q)||it.sap.includes(q))
+    &&(!$('fPend').checked||!has(st.count[it.id]))&&(!$('fLow').checked||isLow(it)||(has(st.count[it.id])&&+st.count[it.id]===0)))
+    .sort((a,b)=>a.c-b.c||a.id-b.id);
+}
+function totCls(c){if(!has(c))return '';const l=fmtN(c).length;return l>=7?' l7':l>=5?' l5':''}
+function rowHTML(it){
+  if(editId===it.id)return `<div class="row edit" data-id="${it.id}"><div class="addf" style="margin:0;border:none;padding:0;background:none;width:100%">
+    <label for="eName-${it.id}">Nombre</label><input id="eName-${it.id}" autocomplete="off" value="${esc(it.n)}" placeholder="Nombre del producto">
+    <label for="eSap-${it.id}">Código SAP</label><input id="eSap-${it.id}" inputmode="numeric" autocomplete="off" value="${esc(it.sap)}" placeholder="Ej. 149999">
+    <label for="eCat-${it.id}">Grupo</label><select id="eCat-${it.id}">${DATA.cats.map((n,i)=>`<option value="${i}"${i===it.c?' selected':''}>${esc(n)}</option>`).join('')}</select>
+    <p class="note err" id="eErr-${it.id}" hidden></p>
+    <div class="actions" style="margin-top:4px"><button class="btn pri" data-ed="save">Guardar</button><button class="btn" data-ed="cancel">Cancelar</button></div></div></div>`;
+  const counting=view==='contar',c=st.count[it.id],log=st.log[it.id]||[];
+  const field=counting?'count':'min';
+  const v=counting?'':(has(st.min[it.id])?st.min[it.id]:'');
+  const low=isLow(it);
+  const meta=[it.sap||'Sin código'];
+  if(counting&&has(st.min[it.id]))meta.push('mín. '+st.min[it.id]);
+  if(!counting&&has(c))meta.push('hay '+c);
+  const state=!has(c)?'':+c===0?'crit':low?'warn':'ok';
+  const label=!has(c)?'Sin contar':+c===0?'Agotado':low?'Bajo mínimo':'Total';
+  const mine=myLast(it.id),last=mine?mine.n:0;
+  return `<div class="row" data-id="${it.id}">
+    ${counting?`<button class="tot ${state}${totCls(c)}" data-open="1" aria-label="${label}: ${has(c)?fmtN(c):'sin contar'}"${log.length?'':' disabled'}>${has(c)?fmtN(c):'–'}</button>`:''}
+    <div class="info"><div class="name${it.n?'':' noname'}">${it.n?esc(it.n):'Sin nombre'}</div><div class="meta"><span>${meta.join(' · ')}</span>${!counting?'<button class="lnk" data-ed="open">Editar</button>':''}${!counting&&low?'<span class="tag">Bajo mínimo</span>':''}${it.x&&!counting?'<span class="tag new">Agregado</span>':''}${it.x&&!counting?(removeId===it.id?`<span class="ask">¿Quitar? <button class="lnk danger" data-rm="yes">Sí, quitar</button> <button class="lnk" data-rm="no">No</button></span>`:`<button class="trash" data-rm="ask" aria-label="Quitar producto">${TRASH}</button>`):''}</div></div>
+    <div class="step">${counting?'<button aria-label="Restar uno" data-d="-1">−</button>':`<label class="ml" for="min-${it.id}">Mín.</label>`}
+    <input id="${field}-${it.id}" class="${counting?'':'minin'}" inputmode="decimal" enterkeyhint="done" aria-label="${counting?'Cantidad a sumar':'Mínimo'} de ${esc(it.n)}" value="${v}" placeholder="${counting?'0':''}">
+    ${counting?'<button aria-label="Sumar uno" data-d="1">+</button>':''}</div>
+    ${counting&&openId===it.id&&mine?`<div class="detail"><button class="btn sm" data-undo="1">Deshacer última (${last<0?'−':'+'}${fmtN(Math.abs(last))})</button></div>`:''}</div>`;
+}
+function addForm(){
+  if(!adding)return addMsg?`<p class="note">${esc(addMsg)}</p>`:'';
+  return `<form class="addf" id="fAdd" novalidate>
+    <div class="cat" style="margin-top:0">Agregar producto</div>
+    <label for="aName">Nombre</label><input id="aName" required autocomplete="off" placeholder="Ej. Jarabe Toffee Nut 1 Lt">
+    <label for="aSap">Código SAP</label><input id="aSap" inputmode="numeric" autocomplete="off" placeholder="Ej. 149999 (opcional)">
+    <label for="aCat">Grupo</label><select id="aCat">${DATA.cats.map((n,i)=>`<option value="${i}"${i===(cat<0?0:cat)?' selected':''}>${esc(n)}</option>`).join('')}</select>
+    <p class="note" id="aErr" hidden></p>
+    <div class="actions" style="margin-top:4px"><button class="btn pri" type="submit">Guardar</button><button class="btn" type="button" id="bCancel">Cancelar</button></div>
+  </form>`;
+}
+function bindAdd(){
+  const f=$('fAdd');if(!f)return;
+  $('bCancel').onclick=()=>{adding=false;render()};
+  f.onsubmit=e=>{e.preventDefault();
+    const n=tc($('aName').value.trim()),sap=$('aSap').value.trim(),err=$('aErr');
+    const fail=m=>{err.textContent=m;err.hidden=false};
+    if(!n&&!sap)return fail('Escribe al menos el nombre o el código SAP. Lo que falte lo puedes completar después con Editar.');
+    if(sap&&!/^\d{5,7}$/.test(sap))return fail('El código SAP lleva solo números (5 a 7 dígitos).');
+    const dup=sap&&items().find(x=>x.sap===sap);
+    if(dup&&!f.dataset.ok){f.dataset.ok=1;return fail(`Ese código ya lo tiene ${dup.n?'"'+dup.n+'"':'otro producto sin nombre'}. Toca Guardar otra vez si de todos modos quieres agregarlo.`)}
+    const id=Date.now();
+    cfg().set({extra:{[id]:{id,sap,n,c:+$('aCat').value,x:1}}},{merge:true}).catch(writeErr);
+    adding=false;addMsg=`Agregado: ${n||'producto sin nombre, SAP '+sap}.`;cat=-1;chips();render();
+  };
+}
+function tc(s){return s.replace(/[^\W\d_]+/g,(w,i)=>i&&/\d/.test(s[i-1])?w.toLowerCase():w[0].toUpperCase()+w.slice(1).toLowerCase())}
+function list(){
+  const rows=filtered();
+  if(!rows.length)return addForm()+'<p class="empty">No hay productos con esos filtros.</p>';
+  let h=addForm(),last=-1;
+  rows.forEach(it=>{if(it.c!==last){h+=`${last<0?'':'</div>'}<div class="cat">${esc(DATA.cats[it.c])}</div><div class="sheet">`;last=it.c}h+=rowHTML(it)});
+  return h+'</div>';
+}
+function order(it){return Math.max(0,Math.ceil(2*st.min[it.id]-st.count[it.id]))}
+function resumen(){
+  const t=items().length,done=items().filter(it=>has(st.count[it.id])).length;
+  const withMin=items().filter(it=>has(st.min[it.id])).length;
+  const low=items().filter(isLow);
+  let h=`<div class="sum"><div class="tile"><b>${done}/${t}</b><span>contados</span></div>
+  <div class="tile"><b>${withMin}</b><span>con mínimo</span></div>
+  <div class="tile"><b style="color:var(--warn)">${low.length}</b><span>bajo mínimo</span></div></div>
+  <div class="cat">Sugerencia de pedido</div>`;
+  if(!low.length)h+=`<p class="note">${withMin?'Nada está bajo su mínimo. ':'Todavía no hay mínimos. '}Pon el mínimo de cada producto en la pestaña Catálogo y aquí verás qué pedir.</p>`;
+  else h+=`<div class="tbl"><table><thead><tr><th>Producto</th><th>Hay</th><th>Mín.</th><th>Pedir</th></tr></thead><tbody>${
+    low.map(it=>`<tr><td>${it.n?esc(it.n):'Sin nombre'}<div class="meta">${it.sap||'Sin código'}</div></td><td class="n">${st.count[it.id]}</td><td class="n">${st.min[it.id]}</td><td class="n" style="color:var(--warn)">${order(it)}</td></tr>`).join('')
+  }</tbody></table></div><p class="note">Pedir = lo necesario para llegar al doble del mínimo.</p>`;
+  h+=`<div class="actions"><button class="btn pri" id="bPdf">Descargar conteo (PDF)</button><button class="btn" id="bCsv">Copiar conteo (CSV)</button><button class="btn danger" id="bReset">Borrar conteo</button></div>
+  ${confirmReset?'<div class="confirm">¿Borrar todas las cantidades contadas? Los mínimos se conservan. <button class="btn danger" id="bYes">Sí, borrar</button><button class="btn" id="bNo">Cancelar</button></div>':''}
+  <p class="note" id="pdfMsg" hidden></p>
+  <p class="note" id="csvMsg">El PDF trae SAP, nombre y cantidad de lo que ya contaste. El CSV se copia para pegarlo en Excel o en un correo.</p>
+  <p class="sync">${syncMsg()}</p>
+  <p class="note">Contando como <b>${esc(ME)}</b>. <button class="lnk" onclick="salir()">Cambiar PIN o nombre</button></p>`;
+  return h;
+}
+/* ---------- Consumo ---------- */
+let up=null,period='',showEx=false,delDay=null,upErr='';
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const today=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};
+const fmtDate=s=>{const[y,m,d]=s.split('-');return `${d}/${m}/${y}`};
+const fmtN=n=>(Math.round(n*100)/100).toLocaleString('es-MX');
+function guessCol(head,words){const i=head.findIndex(h=>words.some(w=>norm(h).includes(w)));return i}
+function readFile(file){
+  upErr='';const rd=new FileReader();
+  rd.onload=e=>{try{
+    if(typeof XLSX==='undefined')throw new Error('lib');
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}).filter(r=>r.some(c=>String(c).trim()!==''));
+    if(rows.length<2)throw new Error('vacio');
+    let hi=rows.findIndex(r=>r.filter(c=>typeof c==='string'&&c.trim()).length>=2);if(hi<0)hi=0;
+    const head=rows[hi].map((h,i)=>String(h).trim()||'Columna '+(i+1));
+    let p=guessCol(head,['producto','articulo','item','descripcion','nombre','bebida']);
+    let q=guessCol(head,['cantidad','vendid','qty','unidades','piezas','cant']);
+    if(p<0)p=0;if(q<0)q=Math.min(1,head.length-1);
+    up={name:file.name,date:(up&&up.date)||today(),head,rows:rows.slice(hi+1),p,q};
+  }catch(err){up=null;upErr=err.message==='lib'?'No se pudo cargar el lector de Excel. Revisa tu conexión y vuelve a intentar.':'No pude leer ese archivo. Sube un Excel (.xlsx, .xls) o CSV con una columna de producto y otra de cantidad.'}
+  render()};
+  rd.readAsArrayBuffer(file);
+}
+function parsedSales(){
+  const m={};up.rows.forEach(r=>{const n=String(r[up.p]).trim();const q=parseFloat(String(r[up.q]).replace(/,/g,''));
+    if(n&&!isNaN(q)&&q>0&&!/^total/i.test(norm(n)))m[n]=(m[n]||0)+q});
+  return Object.entries(m);
+}
+function breakdown(sales,recipes){
+  const rmap={};recipes.forEach(r=>rmap[norm(r.b)]=r);
+  const imap={};items().forEach(it=>{if(it.n)imap[norm(it.n)]=it});
+  const use={},missing=[];let sold=0;
+  sales.forEach(([n,q])=>{sold+=q;const r=rmap[norm(n)];
+    if(r)r.i.forEach(([id,a,u])=>{const k=id+'|'+u;use[k]=(use[k]||0)+a*q});
+    else if(imap[norm(n)]){const k=imap[norm(n)].id+'|pza';use[k]=(use[k]||0)+q}
+    else missing.push([n,q])});
+  const byId={};items().forEach(it=>byId[it.id]=it);
+  const rows=Object.entries(use).map(([k,v])=>{const[id,u]=k.split('|');const it=byId[+id];return{it,u,v}}).filter(r=>r.it)
+    .sort((a,b)=>a.it.c-b.it.c||a.it.n.localeCompare(b.it.n));
+  return{rows,missing:missing.sort((a,b)=>b[1]-a[1]),sold};
+}
+function salesFor(p){
+  const days=Object.keys(st.sales).sort();
+  const pick=p==='semana'?days.filter(d=>{const last=days[days.length-1];return (new Date(last)-new Date(d))/864e5<7}):[p];
+  const m={};pick.forEach(d=>(st.sales[d]||[]).forEach(([n,q])=>m[n]=(m[n]||0)+q));
+  return{sales:Object.entries(m),days:pick};
+}
+function bdHTML(b,note){
+  let h=`<div class="sum"><div class="tile"><b>${fmtN(b.sold)}</b><span>productos vendidos</span></div>
+  <div class="tile"><b>${b.rows.length}</b><span>insumos usados</span></div>
+  <div class="tile"><b style="color:${b.missing.length?'var(--warn)':'var(--ok)'}">${b.missing.length}</b><span>sin receta</span></div></div>`;
+  h+=note?`<p class="note">${note}</p>`:'';
+  h+='<div class="cat">Consumo por insumo</div>';
+  if(!b.rows.length)h+='<p class="note">Ningún producto vendido tiene receta todavía, por eso no hay consumo que mostrar.</p>';
+  else{let last=-1;h+='<div class="tbl"><table><thead><tr><th>Insumo</th><th style="text-align:right">Usado</th></tr></thead><tbody>';
+    b.rows.forEach(r=>{if(r.it.c!==last){last=r.it.c;h+=`<tr class="grp"><td colspan="2">${esc(DATA.cats[r.it.c])}</td></tr>`}
+      h+=`<tr><td>${r.it.n?esc(r.it.n):'Sin nombre'}<div class="meta">${r.it.sap||'Sin código'}</div></td><td class="n">${fmtN(r.v)} ${r.u}</td></tr>`});
+    h+='</tbody></table></div>'}
+  if(b.missing.length)h+=`<div class="cat">Vendidos sin receta</div><p class="note">Estos productos no se descontaron de ningún insumo. Se arreglan al cargar sus recetas.</p>
+    <div class="tbl"><table><tbody>${b.missing.map(([n,q])=>`<tr><td>${esc(n)}</td><td class="n">${fmtN(q)}</td></tr>`).join('')}</tbody></table></div>`;
+  return h;
+}
+function consumo(){
+  const days=Object.keys(st.sales).sort().reverse();
+  let h='<div class="cat">Subir reporte del día</div>';
+  if(!up){
+    h+=`<div class="addf"><input class="vh" type="file" id="uFile" accept=".xlsx,.xls,.csv">
+      <label class="drop" for="uFile" id="uDrop">${UPLOAD}<b>Subir reporte del día</b><span>Toca para elegir un Excel o CSV del POS o Drive Thru</span></label>
+      ${upErr?`<p class="note err">${esc(upErr)}</p>`:''}
+      <p class="note" style="margin:0">Debe traer una columna con el nombre del producto y otra con la cantidad vendida. Puedes subir el reporte del POS y luego el del Drive Thru del mismo día: se suman.</p></div>`;
+  }else{
+    const opts=sel=>up.head.map((x,i)=>`<option value="${i}"${i===sel?' selected':''}>${esc(x)}</option>`).join('');
+    const ps=parsedSales();
+    h+=`<div class="addf"><div class="meta">${esc(up.name)} · ${up.rows.length} renglones</div>
+      <label for="uDate">Día del reporte</label><input type="date" id="uDate" value="${up.date}">
+      <label for="uP">Columna del producto</label><select id="uP">${opts(up.p)}</select>
+      <label for="uQ">Columna de cantidad</label><select id="uQ">${opts(up.q)}</select>
+      <div class="cat" style="margin-top:8px">Vista previa (${ps.length} productos)</div>
+      <div class="tbl" style="margin-top:0"><table><tbody>${ps.slice(0,6).map(([n,q])=>`<tr><td>${esc(n)}</td><td class="n">${fmtN(q)}</td></tr>`).join('')||'<tr><td>No encontré cantidades en esa columna. Prueba con otra.</td></tr>'}</tbody></table></div>
+      <div class="actions" style="margin-top:6px"><button class="btn pri" id="uSave"${ps.length?'':' disabled'}>Guardar ${ps.length} productos del ${fmtDate(up.date)}</button><button class="btn" id="uCancel">Cancelar</button></div></div>`;
+  }
+  if(days.length){
+    if(!period||(period!=='semana'&&!st.sales[period]))period=days[0];
+    h+=`<div class="cat">Desglose</div><select id="per" class="per">${days.map(d=>`<option value="${d}"${d===period?' selected':''}>${fmtDate(d)}</option>`).join('')}<option value="semana"${period==='semana'?' selected':''}>Semana (7 días hasta ${fmtDate(days[0])})</option></select>`;
+    const s=salesFor(period);
+    h+=bdHTML(breakdown(s.sales,RECIPES),period==='semana'?`Suma de ${s.days.length} día${s.days.length>1?'s':''} con reporte.`:'');
+    h+=`<div class="cat">Días guardados</div><div class="tbl"><table><tbody>${days.map(d=>`<tr><td>${fmtDate(d)}<div class="meta">${st.sales[d].length} productos</div></td><td class="n">${delDay===d?`¿Borrar? <button class="lnk" data-day="${d}" data-a="yes">Sí</button> <button class="lnk" data-a="no">No</button>`:`<button class="lnk" data-day="${d}" data-a="ask">Borrar</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }else{
+    h+=`<p class="note">Cuando subas tu primer reporte, aquí verás cuánto se usó de cada insumo ese día y la suma de la semana.</p>`;
+  }
+  h+=`<div class="actions"><button class="btn" id="bEx">${showEx?'Ocultar ejemplo':'Ver un ejemplo'}</button></div>`;
+  if(showEx)h+=`<div class="ex"><div class="cat" style="margin-top:0">Ejemplo con datos inventados</div>`+bdHTML(breakdown(EXAMPLE.sales,EXAMPLE.recipes),'Recetas y ventas de muestra, no son las tuyas. Así se verá un día real cuando estén cargadas tus recetas. La galleta se descuenta sola porque se vende tal cual; el té no tiene receta.')+'</div>';
+  if(!RECIPES.length)h+=`<p class="note">Todavía no hay recetas cargadas: por ahora todo lo vendido aparecerá como "sin receta", salvo los productos que se venden tal cual (galletas, panes, aguas).</p>`;
+  return h;
+}
+function bindConsumo(){
+  const f=$('uFile');if(f)f.onchange=()=>f.files[0]&&readFile(f.files[0]);
+  const dz=$('uDrop');if(dz){
+    dz.ondragover=e=>{e.preventDefault();dz.classList.add('over')};
+    dz.ondragleave=()=>dz.classList.remove('over');
+    dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');const x=e.dataTransfer.files[0];if(x)readFile(x)};
+  }
+  if(up){$('uDate').onchange=e=>{up.date=e.target.value||today();render()};
+    $('uP').onchange=e=>{up.p=+e.target.value;render()};$('uQ').onchange=e=>{up.q=+e.target.value;render()};
+    $('uCancel').onclick=()=>{up=null;render()};
+    $('uSave').onclick=()=>{const q={};parsedSales().forEach(([n,v])=>q[n]=FV.increment(v));
+      root.collection('ventas').doc(up.date).set({q},{merge:true}).catch(writeErr);period=up.date;up=null;render()}}
+  const p=$('per');if(p)p.onchange=e=>{period=e.target.value;render()};
+  $('bEx').onclick=()=>{showEx=!showEx;render()};
+  document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{const a=b.dataset.a;
+    if(a==='ask')delDay=b.dataset.day;else if(a==='no')delDay=null;else{root.collection('ventas').doc(b.dataset.day).delete().catch(writeErr);delDay=null}render()});
+}
+function csv(){
+  const lines=['SAP,Producto,Categoria,Conteo,Minimo'];
+  items().forEach(it=>lines.push([it.sap,'"'+it.n.replace(/"/g,'""')+'"','"'+DATA.cats[it.c]+'"',st.count[it.id]??'',st.min[it.id]??''].join(',')));
+  return lines.join('\n');
+}
+async function pdf(){
+  const m=$('pdfMsg');const say=t=>{m.textContent=t;m.hidden=false};
+  if(!window.jspdf)return say('No se pudo cargar el generador de PDF. Revisa tu conexión y vuelve a intentar.');
+  const rows=items().filter(it=>has(st.count[it.id])).sort((a,b)=>a.c-b.c||a.id-b.id);
+  if(!rows.length)return say('Todavía no has contado ningún producto.');
+  const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'pt',format:'letter'});
+  const d=new Date(),fecha=d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Conteo de insumos',40,46);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`${fecha} · ${rows.length} productos contados`,40,63);
+  doc.autoTable({startY:76,head:[['SAP','NOMBRE','CANTIDAD']],body:rows.map(it=>[it.sap||'',it.n||'',fmtN(st.count[it.id])]),
+    styles:{font:'helvetica',fontSize:9.5,cellPadding:4},headStyles:{fillColor:[31,95,191],textColor:255},
+    columnStyles:{0:{cellWidth:70},2:{cellWidth:80,halign:'right'}},margin:{left:40,right:40},
+    didDrawPage:()=>{doc.setFontSize(8);doc.setTextColor(120);doc.text('Página '+doc.internal.getNumberOfPages(),doc.internal.pageSize.getWidth()-40,doc.internal.pageSize.getHeight()-20,{align:'right'});doc.setTextColor(0)}});
+  const name=`conteo-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.pdf`;
+  const dl=window.claude&&claude.use?await claude.use('downloads'):null;
+  if(dl){try{await dl.save({filename:name,data:doc.output('blob')});say('Listo, PDF descargado.')}catch(e){if(e&&e.code!=='declined')say('No se pudo descargar el PDF aquí. Intenta otra vez.')}}
+  else{try{doc.save(name);say('Listo, PDF descargado.')}catch(e){say('Este navegador no dejó descargar el PDF.')}}
+}
+function render(){
+  const isList=view==='contar'||view==='minimos';
+  ['q','chips','toggles'].forEach(id=>$(id).hidden=!isList);
+  $('ttl').textContent={contar:'Conteo de insumos',minimos:'Catálogo y mínimos',consumo:'Consumo diario',resumen:'Resumen'}[view];
+  progress();
+  $('main').innerHTML=isList?list():view==='consumo'?consumo():resumen();
+  if(isList)bindAdd();
+  if(view==='consumo')bindConsumo();
+  if(view==='resumen'){
+    $('bCsv').onclick=()=>{const t=csv();const m=$('csvMsg');
+      const fb=()=>{m.innerHTML='Selecciona y copia el texto:<textarea readonly>'+esc(t)+'</textarea>';m.querySelector('textarea').select()};
+      try{navigator.clipboard.writeText(t).then(()=>m.textContent='Copiado. Pégalo en Excel o en un correo.',fb)}catch(e){fb()}};
+    $('bPdf').onclick=pdf;
+    $('bReset').onclick=()=>{confirmReset=true;render()};
+    if(confirmReset){$('bYes').onclick=()=>{const b=fs.batch();Object.keys(st.count).forEach(id=>b.delete(cRef(id)));b.commit().catch(writeErr);confirmReset=false;render()};$('bNo').onclick=()=>{confirmReset=false;render()}}
+  }
+}
+function setVal(id,field,raw){
+  const v=String(raw).replace(',','.').trim();
+  cfg().set({[field]:{[id]:(v===''||isNaN(+v)||+v<0)?FV.delete():+v}},{merge:true}).catch(writeErr);
+}
+function addCount(id,n,fromBtn){
+  const prev=has(st.count[id])?+st.count[id]:0;
+  n=Math.max(n,-prev);if(!n)return;
+  const ref=cRef(id),b=fs.batch(),old=fromBtn&&btnRun[id]?myLast(id):null;
+  if(old){const merged=Object.assign({},old,{n:Math.round((old.n+n)*100)/100});
+    b.set(ref,{total:FV.increment(n),log:FV.arrayRemove(old)},{merge:true});
+    if(merged.n)b.set(ref,{log:FV.arrayUnion(merged)},{merge:true});}
+  else b.set(ref,{total:FV.increment(n),log:FV.arrayUnion(entry(n))},{merge:true});
+  btnRun[id]=!!fromBtn;
+  b.commit().catch(writeErr);
+}
+function markZero(id){cRef(id).set({total:FV.increment(0),log:FV.arrayUnion(entry(0))},{merge:true}).catch(writeErr)}
+function undoCount(id){
+  const e=myLast(id);if(!e)return;btnRun[id]=false;
+  if((st.log[id]||[]).length<=1)cRef(id).delete().catch(writeErr);
+  else cRef(id).set({total:FV.increment(-e.n),log:FV.arrayRemove(e)},{merge:true}).catch(writeErr);
+}
+function toast(id,n){
+  const it=items().find(x=>x.id===id),t=$('toast'),name=it.n||it.sap||'producto';
+  t.innerHTML=`<span>${n?(n<0?'Se restó ':'Se sumó ')+fmtN(Math.abs(n)):'Registrado en 0'}: ${esc(name)}</span><button class="lnk" id="tUndo">Deshacer</button>`;
+  t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,6000);
+  $('tUndo').onclick=()=>{undoCount(id);refreshRow(id);t.hidden=true};
+}
+function refreshRow(id){
+  const el=document.querySelector(`.row[data-id="${id}"]`);if(!el)return;
+  const it=items().find(x=>x.id===id);const tmp=document.createElement('div');tmp.innerHTML=rowHTML(it);el.replaceWith(tmp.firstElementChild);progress();
+}
+$('main').addEventListener('click',e=>{
+  const ed=e.target.closest('button[data-ed]');
+  if(ed){const id=+ed.closest('.row').dataset.id,a=ed.dataset.ed;
+    if(a==='open'){const prev=editId;editId=id;if(prev!==null)refreshRow(prev);refreshRow(id);$('eName-'+id).focus();return}
+    if(a==='save'){const n=tc($('eName-'+id).value.trim()),sap=$('eSap-'+id).value.trim(),err=$('eErr-'+id);
+      const fail=m=>{err.textContent=m;err.hidden=false};
+      if(!n&&!sap)return fail('Deja al menos el nombre o el código SAP.');
+      if(sap&&!/^\d{5,7}$/.test(sap))return fail('El código SAP lleva solo números (5 a 7 dígitos).');
+      const c=+$('eCat-'+id).value,moved=c!==items().find(x=>x.id===id).c;
+      cfg().set({edit:{[id]:{n,sap,c}}},{merge:true}).catch(writeErr);
+      if(moved){editId=null;render();const el=document.querySelector(`.row[data-id="${id}"]`);if(el)el.scrollIntoView({block:'center'});return}}
+    editId=null;refreshRow(id);return}
+  const r=e.target.closest('button[data-rm]');
+  if(r){const id=+r.closest('.row').dataset.id,a=r.dataset.rm;
+    if(a==='ask')removeId=id;else if(a==='no')removeId=null;
+    else{cfg().set({extra:{[id]:FV.delete()},min:{[id]:FV.delete()},edit:{[id]:FV.delete()}},{merge:true}).catch(writeErr);cRef(id).delete().catch(writeErr);removeId=null;return}
+    refreshRow(id);return}
+  const o=e.target.closest('button[data-open]');
+  if(o){const id=+o.closest('.row').dataset.id,prev=openId;openId=prev===id?null:id;if(prev!==null&&prev!==id)refreshRow(prev);refreshRow(id);return}
+  const u=e.target.closest('button[data-undo]');
+  if(u){const id=+u.closest('.row').dataset.id;undoCount(id);refreshRow(id);return}
+  const b=e.target.closest('button[data-d]');if(!b)return;
+  const id=+b.closest('.row').dataset.id;
+  addCount(id,+b.dataset.d,true);refreshRow(id);
+});
+$('main').addEventListener('change',e=>{
+  const inp=e.target;if(inp.tagName!=='INPUT'||!/^(count|min)-/.test(inp.id))return;
+  const id=+inp.closest('.row').dataset.id;
+  if(view==='contar'){
+    const raw=inp.value.trim().replace(',','.'),n=parseFloat(raw);
+    if(raw!==''&&!isNaN(n)){
+      if(n){addCount(id,n,false);toast(id,n)}
+      else if(!has(st.count[id])){markZero(id);toast(id,0)}
+    }
+  }
+  else setVal(id,'min',inp.value);
+  refreshRow(id);
+});
+$('main').addEventListener('keydown',e=>{if(e.key==='Enter'&&/^(count|min)-/.test(e.target.id))e.target.blur()});
+$('main').addEventListener('focusin',e=>{if(e.target.tagName==='INPUT')e.target.select()});
+$('bAdd').onclick=()=>{adding=true;addMsg='';render();$('aName').focus();window.scrollTo(0,0)};
+['q','fPend','fLow'].forEach(id=>$(id).addEventListener('input',render));
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  view=b.dataset.v;confirmReset=false;editId=null;openId=null;removeId=null;
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  render();window.scrollTo(0,0);
+});
+chips();render();gate();
+</script>
+
+</body></html>
