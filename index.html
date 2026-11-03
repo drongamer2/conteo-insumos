@@ -180,7 +180,7 @@ const EXAMPLE={
 };
 const KEY='sbx-conteo-v1';
 let st={count:{},min:{},extra:[],edit:{},sales:{},log:{},hist:[]};
-const items=()=>DATA.items.concat(st.extra).map(it=>st.edit[it.id]?Object.assign({},it,st.edit[it.id]):it);
+const items=()=>DATA.items.concat(st.extra).map(it=>st.edit[it.id]?Object.assign({},it,st.edit[it.id]):it).filter(it=>!it.del);
 let adding=false,addMsg='',removeId=null,editId=null,openId=null,toastT=null;
 const TRASH='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>';
 const UPLOAD='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9M12 12v8M8.5 15.5 12 12l3.5 3.5"/></svg>';
@@ -267,7 +267,9 @@ function rowHTML(it){
     <label for="eSap-${it.id}">Código SAP</label><input id="eSap-${it.id}" inputmode="numeric" autocomplete="off" value="${esc(it.sap)}" placeholder="Ej. 149999">
     <label for="eCat-${it.id}">Grupo</label><select id="eCat-${it.id}">${DATA.cats.map((n,i)=>`<option value="${i}"${i===it.c?' selected':''}>${esc(n)}</option>`).join('')}</select>
     <p class="note err" id="eErr-${it.id}" hidden></p>
-    <div class="actions" style="margin-top:4px"><button class="btn pri" data-ed="save">Guardar</button><button class="btn" data-ed="cancel">Cancelar</button></div></div></div>`;
+    <div class="actions" style="margin-top:4px"><button class="btn pri" data-ed="save">Guardar</button><button class="btn" data-ed="cancel">Cancelar</button></div>
+    ${removeId===it.id?`<p class="note ask" style="margin:12px 0 6px">¿Eliminar este producto? Se quita del catálogo y de su conteo.</p><div class="actions"><button class="btn danger" data-ed="delyes">Sí, eliminar</button><button class="btn" data-ed="delno">No</button></div>`
+      :`<div class="actions" style="margin-top:12px"><button class="btn danger" data-ed="del">${TRASH} Eliminar producto</button></div>`}</div></div>`;
   const counting=view==='contar',c=st.count[it.id],log=st.log[it.id]||[];
   const field=counting?'count':'min';
   const v=counting?'':(has(st.min[it.id])?st.min[it.id]:'');
@@ -311,6 +313,12 @@ function bindAdd(){
     cfg().set({extra:{[id]:{id,sap,n,c:+$('aCat').value,x:1}}},{merge:true}).catch(writeErr);
     adding=false;addMsg=`Agregado: ${n||'producto sin nombre, SAP '+sap}.`;cat=-1;chips();render();
   };
+}
+function delItem(id){
+  const it=items().find(x=>x.id===id);if(!it)return;
+  if(it.x)cfg().set({extra:{[id]:FV.delete()},min:{[id]:FV.delete()},edit:{[id]:FV.delete()}},{merge:true}).catch(writeErr);
+  else cfg().set({edit:{[id]:{del:1}},min:{[id]:FV.delete()}},{merge:true}).catch(writeErr);
+  cRef(id).delete().catch(writeErr);
 }
 function tc(s){return s.replace(/[^\W\d_]+/g,(w,i)=>i&&/\d/.test(s[i-1])?w.toLowerCase():w[0].toUpperCase()+w.slice(1).toLowerCase())}
 function list(){
@@ -585,7 +593,9 @@ $('main').addEventListener('click',e=>{
       const c=+$('eCat-'+id).value,moved=c!==items().find(x=>x.id===id).c;
       cfg().set({edit:{[id]:{n,sap,c}}},{merge:true}).catch(writeErr);
       if(moved){editId=null;render();const el=document.querySelector(`.row[data-id="${id}"]`);if(el)el.scrollIntoView({block:'center'});return}}
-    editId=null;refreshRow(id);return}
+    if(a==='del'||a==='delno'){removeId=a==='del'?id:null;refreshRow(id);return}
+    if(a==='delyes'){delItem(id);editId=null;removeId=null;render();return}
+    editId=null;removeId=null;refreshRow(id);return}
   const r=e.target.closest('button[data-rm]');
   if(r){const id=+r.closest('.row').dataset.id,a=r.dataset.rm;
     if(a==='ask')removeId=id;else if(a==='no')removeId=null;
