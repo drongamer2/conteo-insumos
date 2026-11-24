@@ -78,13 +78,13 @@ const pxName=x=>x.it?(x.it.n||'Sin nombre'):x.n;
 function pedidos(){
   const M=pxModel(),t0=pxDay0();
   const nextAll=pxDeliveries([...new Set(pxDias().concat(pxLeche()))],14).slice(0,4);
-  let h=`<div class="seg" role="group" aria-label="Proyección">${[[3,'3 días'],[7,'1 semana'],[14,'2 semanas']].map(([d,l])=>`<button class="chip" data-h="${d}" aria-pressed="${pxH===d}">${l}</button>`).join('')}</div>`;
+  let h=pxUploadHTML()+`<div class="seg" style="margin-top:12px" role="group" aria-label="Proyección">${[[3,'3 días'],[7,'1 semana'],[14,'2 semanas']].map(([d,l])=>`<button class="chip" data-h="${d}" aria-pressed="${pxH===d}">${l}</button>`).join('')}</div>`;
   const short=M.rows.filter(x=>x.short),nocount=M.rows.filter(x=>x.s===null);
   h+=`<div class="sum"><div class="tile"><b>${M.rows.length}</b><span>insumos con base</span></div>
   <div class="tile"><b style="color:${short.length?'var(--crit)':'var(--ok)'}">${short.length}</b><span>se acaban antes de su entrega</span></div>
   <div class="tile"><b style="color:${nocount.length?'var(--warn)':'var(--ok)'}">${nocount.length}</b><span>sin conteo</span></div></div>`;
   h+=`<p class="note">Próximas entregas: ${nextAll.map(d=>`<b>${pxD(d)}</b>${pxLeche().includes(d.getDay())?' (con leche)':''}`).join(' · ')}. Uso diario sacado de ${M.reps.length} reporte${M.reps.length===1?'':'s'} (${M.ndays} día${M.ndays===1?'':'s'})${pxAdj()?`, ajustado ${pxAdj()>0?'+':''}${pxAdj()}%`:''}.</p>`;
-  if(!M.rows.length)return h+`<p class="note">No hay reportes de uso. Sube uno abajo.</p>`+pxReportsHTML(M);
+  if(!M.rows.length)return h+`<p class="note">No hay reportes de uso. Sube tu PDF arriba.</p>`+pxReportsHTML(M);
   h+=`<div class="seg" style="margin-top:12px" role="group" aria-label="Filtro">${[['todo','Todo'],['pedir','Hay que pedir'],['falta','Se acaba antes']].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${pxFil===k}">${l}</button>`).join('')}</div>`;
   const vis=M.rows.filter(x=>pxFil==='todo'||(pxFil==='falta'?x.short:M.cols.some(c=>x.plan[c]>0)));
   /* Pedido sugerido por entrega */
@@ -132,16 +132,21 @@ function pxSettingsHTML(){
     <label for="pxAdj">Ajuste de demanda en % (ej. 15 para temporada alta, -10 si baja)</label><input id="pxAdj" inputmode="decimal" value="${pxAdj()}">
     <p class="note" style="margin:0">Se guardan para toda la tienda.</p></div>`;
 }
-function pxReportsHTML(M){
-  let h=`<div class="cat">Reportes de uso</div>`;
+/* Caja para subir el PDF: va arriba de todo en Pedidos para que se vea de inmediato. */
+function pxUploadHTML(){
+  let h=`<div class="cat" style="margin-top:0">Base para el pedido: tu reporte en PDF</div>`;
   if(!pxUp)h+=`<div class="addf"><input class="vh" type="file" id="pxFile" accept=".pdf,application/pdf">
-    <label class="drop" for="pxFile">${UPLOAD}<b>Subir reporte de uso (PDF)</b><span>"Inventory Item Usage Analysis" de un día o de varios días</span></label>
+    <label class="drop" for="pxFile">${UPLOAD}<b>Subir PDF del reporte de uso</b><span>"Inventory Item Usage Analysis". La app lo lee y con eso calcula qué pedir para 3 días, 1 semana y 2 semanas.</span></label>
     ${pxErr?`<p class="note err">${esc(pxErr)}</p>`:''}${pxMsg?`<p class="note" style="color:var(--ok)">${esc(pxMsg)}</p>`:''}
     <p class="note" style="margin:0">Entre más días subas (por ejemplo una semana completa), más real sale el uso diario: un solo día no ve la diferencia entre semana y fin de semana.</p></div>`;
   else h+=`<div class="addf"><div class="meta">${esc(pxUp.name)}</div>
     <p style="margin:0">Del <b>${fmtDate(pxUp.f)}</b> al <b>${fmtDate(pxUp.t)}</b> (${pxDaysOf(pxUp)} día${pxDaysOf(pxUp)===1?'':'s'}) · ${pxUp.i.length} insumos${pxUp.g?` · ${pxUp.g} clientes`:''}</p>
     <div class="tbl" style="margin-top:0"><table><tbody>${pxUp.i.slice(0,5).map(([n,u,q])=>`<tr><td>${esc(n)}</td><td class="n">${fmtN(q)} <span class="mute">${esc(pxUnit(u))}</span></td></tr>`).join('')}</tbody></table></div>
     <div class="actions" style="margin-top:6px"><button class="btn pri" id="pxSave">Guardar reporte</button><button class="btn" id="pxCancel">Cancelar</button></div></div>`;
+  return h;
+}
+function pxReportsHTML(M){
+  let h=`<div class="cat">Reportes de uso guardados</div><p class="note" style="margin-top:0">El uso diario sale del promedio de todos estos. Quita los que ya no quieras usar.</p>`;
   h+=`<div class="tbl"><table><tbody>${M.reps.map(r=>`<tr><td>${r.f===r.t?fmtDate(r.f):fmtDate(r.f)+' al '+fmtDate(r.t)}<div class="meta">${r.i.length} insumos${r.g?' · '+r.g+' clientes':''}${r.k==='base'?' · el que mandaste para empezar':''}</div></td><td class="n">${pxDelRep===r.k?`¿Quitar? <button class="lnk" data-rk="${r.k}" data-ra="yes">Sí</button> <button class="lnk" data-ra="no">No</button>`:`<button class="lnk" data-rk="${r.k}" data-ra="ask">Quitar</button>`}</td></tr>`).join('')||'<tr><td>Sin reportes.</td></tr>'}</tbody></table></div>`;
   return h;
 }
