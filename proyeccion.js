@@ -25,6 +25,10 @@ const pxKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+St
 const pxUnit=u=>{const p=String(u||'').split(':');return (p[1]||'').trim()||p[0].trim().toLowerCase()||'pza'};
 const pxCeil=x=>Math.ceil(x-1e-9);
 /* Leche que llega aparte (Lala): solo las leches de vaca del catálogo. */
+/* La leche de vaca se pide por caja: 12 litros (12 piezas de 1 L). */
+const PX_CAJA_LECHE=12;
+/* Litros por unidad del reporte: "LT: 2 Litros" = 2, "LT: lt" = 1. */
+const pxLitros=u=>{const m=String(u||'').match(/(\d+(?:[.,]\d+)?)\s*(l|lt|litros?)\b/i);return m?parseFloat(m[1].replace(',','.')):1};
 const pxIsMilk=it=>!!it&&it.c===9&&/^leche (entera|deslactosada|light|lala)/i.test(it.n||'');
 function pxReports(){
   const r=Object.assign({},(PX.del||[]).includes('base')?{}:{base:PX_BASE},PX.rep||{});
@@ -58,17 +62,19 @@ function pxModel(){
   const names=Object.keys(tot),m=pxMatch(names),byId={};items().forEach(it=>byId[it.id]=it);
   const f=1+pxAdj()/100,t0=pxDay0(),seg=pxSeg();
   const rows=names.map(n=>{
-    const it=m[n]!==null?byId[m[n]]:null,r=ndays?tot[n]/ndays*f:0;
-    const s=it&&has(st.count[it.id])?+st.count[it.id]:null,milk=pxIsMilk(it);
+    const it=m[n]!==null?byId[m[n]]:null,milk=pxIsMilk(it);
+    /* Leche: el uso se pasa a litros y el pedido sale en cajas de 12 L. */
+    const lpu=milk?pxLitros(unit[n]):1,pk=milk?PX_CAJA_LECHE:1,r=ndays?tot[n]/ndays*f*lpu:0;
+    const s=it&&has(st.count[it.id])?+st.count[it.id]:null;
     const sched=milk?pxLeche():pxDias(),dels=pxDeliveries(sched,pxH+14);
     const safe=Math.max(it&&has(st.min[it.id])?+st.min[it.id]:0,r*seg);
     /* Simula el inventario: baja con el uso diario (sin pasar de 0, lo que falta es venta perdida) y sube con cada pedido. */
     const plan={};let lvl=s||0,prev=t0;
     dels.forEach((d,k)=>{if(pxDiff(t0,d)>pxH||!dels[k+1])return;
-      lvl=Math.max(0,lvl-r*pxDiff(prev,d));const o=Math.max(0,pxCeil(r*pxDiff(d,dels[k+1])+safe-lvl));plan[pxKey(d)]=o;lvl+=o;prev=d});
+      lvl=Math.max(0,lvl-r*pxDiff(prev,d));const o=Math.max(0,pxCeil((r*pxDiff(d,dels[k+1])+safe-lvl)/pk));plan[pxKey(d)]=o;lvl+=o*pk;prev=d});
     const cover=r>0&&s!==null?s/r:null,first=dels[0];
     const short=r>0&&first&&(s===null?false:s<r*pxDiff(t0,first));
-    return{n,it,u:pxUnit(unit[n]),r,s,milk,plan,cover,short,proj:r*pxH,first};
+    return{n,it,u:milk?'litros':pxUnit(unit[n]),pk,r,s,milk,plan,cover,short,proj:r*pxH,first};
   }).filter(x=>x.r>0);
   rows.sort((a,b)=>(a.it?a.it.c:99)-(b.it?b.it.c:99)||(a.it?a.it.n:a.n).localeCompare(b.it?b.it.n:b.n));
   const cols=[...new Set([...pxDeliveries(pxDias(),pxH),...pxDeliveries(pxLeche(),pxH)].map(pxKey))].sort();
@@ -96,9 +102,9 @@ function pedidos(){
     h+=`<div class="tbl"><table class="px"><thead><tr><th>Insumo</th>${M.cols.map(c=>{const d=new Date(c+'T00:00');return `<th class="r">${pxD(d)}</th>`}).join('')}</tr></thead><tbody>`;
     vis.forEach(x=>{const c=x.it?x.it.c:-1;if(c!==last){last=c;h+=`<tr class="grp"><td colspan="${M.cols.length+1}">${c<0?'Sin vincular al catálogo':esc(DATA.cats[c])}</td></tr>`}
       h+=`<tr><td>${esc(pxName(x))}<div class="meta">${x.it&&x.it.sap?x.it.sap+' · ':''}${esc(x.u)}${x.s===null?' · <span class="tag">sin conteo</span>':''}</div></td>${M.cols.map(c=>{
-        if(!(c in x.plan))return '<td class="n mute">—</td>';const o=x.plan[c];return `<td class="n${o?'':' mute'}">${o?fmtN(o):'0'}</td>`}).join('')}</tr>`});
+        if(!(c in x.plan))return '<td class="n mute">—</td>';const o=x.plan[c];return `<td class="n${o?'':' mute'}">${o?fmtN(o)+(x.pk>1?` <span class="u">caja${o===1?'':'s'}</span>`:''):'0'}</td>`}).join('')}</tr>`});
     h+='</tbody></table></div>';
-    h+=`<p class="note">Cantidad para pedir en cada entrega, en la unidad del reporte. Cubre el uso entre esa entrega y la siguiente más ${fmtN(pxSeg())} día${pxSeg()===1?'':'s'} de reserva (o el mínimo del catálogo si es mayor), descontando lo que se calcula que quedará ese día según el conteo actual. "—" = ese día no llega (la leche llega solo ${pxLeche().map(d=>PX_DIAL[d]).join(' y ')}). Sin conteo se calcula como si hubiera 0.</p>`;
+    h+=`<p class="note">Cantidad para pedir en cada entrega, en la unidad del reporte. La leche de vaca va en cajas de 12 litros, y su uso y lo que "hay" van en litros. Cubre el uso entre esa entrega y la siguiente más ${fmtN(pxSeg())} día${pxSeg()===1?'':'s'} de reserva (o el mínimo del catálogo si es mayor), descontando lo que se calcula que quedará ese día según el conteo actual. "—" = ese día no llega (la leche llega solo ${pxLeche().map(d=>PX_DIAL[d]).join(' y ')}). Sin conteo se calcula como si hubiera 0.</p>`;
     h+=`<div class="actions"><select id="pxPdfD" class="per" aria-label="Entrega para el PDF">${M.cols.map(c=>`<option value="${c}">${pxD(new Date(c+'T00:00'))}</option>`).join('')}</select><button class="btn pri" id="pxPdf">Descargar pedido (PDF)</button></div><p class="note" id="pdfMsg" hidden></p>`;
   }
   /* Proyección */
@@ -196,7 +202,7 @@ async function pxMakePdf(key){
   const d=new Date(key+'T00:00'),{jsPDF}=window.jspdf,doc=new jsPDF({unit:'pt',format:'letter'});
   doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Pedido sugerido',40,46);
   doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`Entrega del ${PX_DIAL[d.getDay()]} ${d.toLocaleDateString('es-MX')} · ${rows.length} insumos · hecho el ${new Date().toLocaleDateString('es-MX')}`,40,63);
-  doc.autoTable({startY:76,head:[['SAP','INSUMO','UNIDAD','HAY','PEDIR']],body:rows.map(x=>[x.it&&x.it.sap||'',pxName(x),x.u,x.s===null?'—':fmtN(x.s),fmtN(x.plan[key])]),
+  doc.autoTable({startY:76,head:[['SAP','INSUMO','UNIDAD','HAY','PEDIR']],body:rows.map(x=>[x.it&&x.it.sap||'',pxName(x),x.pk>1?`caja ${x.pk} L`:x.u,x.s===null?'—':fmtN(x.s),fmtN(x.plan[key])]),
     styles:{font:'helvetica',fontSize:9.5,cellPadding:4},headStyles:{fillColor:[31,95,191],textColor:255},
     columnStyles:{0:{cellWidth:60},2:{cellWidth:80},3:{cellWidth:50,halign:'right'},4:{cellWidth:55,halign:'right'}},margin:{left:40,right:40}});
   const name=`pedido-${key}.pdf`;
