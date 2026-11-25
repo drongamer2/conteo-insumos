@@ -228,7 +228,7 @@ function subscribe(){
   cfg().onSnapshot(d=>{const v=d.data()||{};st.min=v.min||{};st.extra=Object.values(v.extra||{}).sort((a,b)=>a.id-b.id);st.edit=v.edit||{};st.leche=v.leche||{};softRender()},writeErr);
   root.collection('ventas').onSnapshot(s=>{const o={};s.forEach(d=>{o[d.id]=Object.entries(d.data().q||{})});st.sales=o;if(view==='consumo')softRender()},writeErr);
   if(typeof proySub==='function')proySub();
-  root.collection('historial').onSnapshot(s=>{const a=[];s.forEach(d=>{const v=d.data();if(v&&Array.isArray(v.rows))a.push(v)});st.hist=a;if(view==='resumen')softRender()},writeErr);
+  root.collection('historial').onSnapshot(s=>{const a=[];s.forEach(d=>{const v=d.data();if(v&&Array.isArray(v.rows))a.push(v)});st.hist=a;if(view==='resumen'||view==='pedidos')softRender()},writeErr);
   window.addEventListener('online',()=>{online=null;setSync()});window.addEventListener('offline',()=>{online=false;setSync()});
 }
 async function tienda(pin){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('sbx-tienda:'+pin));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,40)}

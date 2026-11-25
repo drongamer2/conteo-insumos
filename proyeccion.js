@@ -10,7 +10,7 @@ const PX_LINK0={'301427 Leche Entera Cj/6 Pzas/2L':260,'306517 Leche Deslact Sup
   '306035 Leche Light 1 LT':263,'306577 YogurtNaturalSinAzu900gr':265,'Media Baguette':231,'Salsa Panettone 1.86lt':215,
   'Toffee Nut Sprinkles Topping 11o':102,'Topping Cranberry Azucar1bt 141g':105,'Topping Salsa Cranberry1bte 12':103};
 const PX_DIA=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],PX_DIAL=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-let PX={},pxH=7,pxDel=null,pxUp=null,pxErr='',pxMsg='',pxLinkOpen=false,pxLinkRow=null,pxSet=false,pxFil='todo',pxDelRep=null;
+let pxPresRow=null,PX={},pxH=7,pxDel=null,pxUp=null,pxErr='',pxMsg='',pxLinkOpen=false,pxLinkRow=null,pxSet=false,pxFil='todo',pxDelRep=null;
 const pxDoc=()=>root.collection('config').doc('proyeccion');
 function proySub(){pxDoc().onSnapshot(d=>{PX=d.data()||{};if(view==='pedidos')softRender()},writeErr)}
 const pxDias=()=>Array.isArray(PX.dias)&&PX.dias.length?PX.dias:[3,6];
@@ -29,6 +29,20 @@ const pxCeil=x=>Math.ceil(x-1e-9);
 const PX_CAJA_LECHE=12;
 /* Litros por unidad del reporte: "LT: 2 Litros" = 2, "LT: lt" = 1. */
 const pxLitros=u=>{const m=String(u||'').match(/(\d+(?:[.,]\d+)?)\s*(l|lt|litros?)\b/i);return m?parseFloat(m[1].replace(',','.')):1};
+/* Piezas por caja según el nombre del reporte: "CJ/2000 PZAS", "Cj/12 Pzas", "12/cs". Solo cuando el reporte cuenta por pieza. */
+function pxPackAuto(n,u){
+  const m=String(n).match(/\bc(?:j|ja|s)\.?\s*\/\s*(\d{1,5})/i)||String(n).match(/\b(\d{1,4})\s*\/\s*cs\b/i);if(!m)return 1;
+  const k=+m[1];if(!(k>1))return 1;
+  /* "Cj/6 Li" = 6 litros, "Cja/12 Bliste" = 12 blísters: el número ya va en la unidad del reporte. */
+  if(new RegExp('/\\s*'+k+'\\s*(li|lt|l|blis)','i').test(n))return k;
+  const code=String(u||'').split(':')[0].trim().toUpperCase(),rest=String(u||'').split(':')[1]||'';
+  if(code==='BLI'){const b=rest.match(/(\d+)\s*pz/i);return b?Math.max(1,Math.round(k/+b[1])):1}
+  if(code==='LT'){const l=String(n).match(/\/\s*(\d+(?:[.,]\d+)?)\s*(?:l|lt|li)\b/i)||String(n).match(/\b(\d+(?:[.,]\d+)?)\s*(?:lt|li)\b/i);
+    return l?Math.round(k*parseFloat(l[1].replace(',','.'))*100)/100:1}
+  return k;
+}
+/* Presentación de cada insumo: {p: unidades del reporte por caja, c: 'caja' si se cuenta en cajas, 'u' si en unidades del reporte}. */
+const pxPres=()=>PX.pres||{};
 const pxIsMilk=it=>!!it&&it.c===9&&/^leche (entera|deslactosada|light|lala)/i.test(it.n||'');
 function pxReports(){
   const r=Object.assign({},(PX.del||[]).includes('base')?{}:{base:PX_BASE},PX.rep||{});
@@ -54,6 +68,16 @@ function pxMatch(names){
   names.forEach(n=>{if(!(n in m))m[n]=null});
   pxMatchCache={sig,m};return m;
 }
+/* Último dato de inventario de un insumo: {q, d: día del conteo, h: true si sale del historial}. */
+function pxStock(it){
+  if(!it)return null;
+  if(has(st.count[it.id])){const l=(st.log||{})[it.id]||[],t=l.length?l[l.length-1].t:null,d=t?new Date(t):pxDay0();d.setHours(0,0,0,0);
+    return{q:+st.count[it.id],d}}
+  const hs=(st.hist||[]).slice().sort((a,b)=>b.t-a.t);
+  for(const h of hs){const r=h.rows.find(r=>(it.sap&&r.s===it.sap)||(r.n&&r.n===it.n));
+    if(r){const d=new Date(h.t);d.setHours(0,0,0,0);return{q:+r.q||0,d,h:true}}}
+  return null;
+}
 /* Fechas de entrega a partir de mañana, hasta n días. */
 function pxDeliveries(days,n){const t=pxDay0(),out=[];for(let i=1;i<=n;i++){const d=pxAdd(t,i);if(days.includes(d.getDay()))out.push(d)}return out}
 function pxModel(){
@@ -64,8 +88,11 @@ function pxModel(){
   const rows=names.map(n=>{
     const it=m[n]!==null?byId[m[n]]:null,milk=pxIsMilk(it);
     /* Leche: el uso se pasa a litros y el pedido sale en cajas de 12 L. */
-    const lpu=milk?pxLitros(unit[n]):1,pk=milk?PX_CAJA_LECHE:1,r=ndays?tot[n]/ndays*f*lpu:0;
-    const s=it&&has(st.count[it.id])?+st.count[it.id]:null;
+    const lpu=milk?pxLitros(unit[n]):1,r=ndays?tot[n]/ndays*f*lpu:0,pr=pxPres()[n]||{};
+    const auto=milk?PX_CAJA_LECHE:pxPackAuto(n,unit[n]),pk=pr.p>0?+pr.p:auto,cin=pr.c||(milk||pk<=1?'u':'caja');
+    /* Lo que hay: el conteo actual o, si no hay, el último inventario guardado. Se le resta lo que se usó desde ese día. */
+    const src=pxStock(it),k=cin==='caja'?pk:1;
+    const s=src?Math.max(0,src.q*k-r*pxDiff(src.d,t0)):null;
     const sched=milk?pxLeche():pxDias(),dels=pxDeliveries(sched,pxH+14);
     const safe=Math.max(it&&has(st.min[it.id])?+st.min[it.id]:0,r*seg);
     /* Simula el inventario: baja con el uso diario (sin pasar de 0, lo que falta es venta perdida) y sube con cada pedido. */
@@ -74,7 +101,7 @@ function pxModel(){
       lvl=Math.max(0,lvl-r*pxDiff(prev,d));const o=Math.max(0,pxCeil((r*pxDiff(d,dels[k+1])+safe-lvl)/pk));plan[pxKey(d)]=o;lvl+=o*pk;prev=d});
     const cover=r>0&&s!==null?s/r:null,first=dels[0];
     const short=r>0&&first&&(s===null?false:s<r*pxDiff(t0,first));
-    return{n,it,u:milk?'litros':pxUnit(unit[n]),pk,r,s,milk,plan,cover,short,proj:r*pxH,first};
+    return{n,it,u:milk?'litros':pxUnit(unit[n]),pk,auto,cin,src,r,s,milk,plan,cover,short,proj:r*pxH,first};
   }).filter(x=>x.r>0);
   rows.sort((a,b)=>(a.it?a.it.c:99)-(b.it?b.it.c:99)||(a.it?a.it.n:a.n).localeCompare(b.it?b.it.n:b.n));
   const cols=[...new Set([...pxDeliveries(pxDias(),pxH),...pxDeliveries(pxLeche(),pxH)].map(pxKey))].sort();
@@ -101,10 +128,11 @@ function pedidos(){
   else{let last=-2;
     h+=`<div class="tbl"><table class="px"><thead><tr><th>Insumo</th>${M.cols.map(c=>{const d=new Date(c+'T00:00');return `<th class="r">${pxD(d)}</th>`}).join('')}</tr></thead><tbody>`;
     vis.forEach(x=>{const c=x.it?x.it.c:-1;if(c!==last){last=c;h+=`<tr class="grp"><td colspan="${M.cols.length+1}">${c<0?'Sin vincular al catálogo':esc(DATA.cats[c])}</td></tr>`}
-      h+=`<tr><td>${esc(pxName(x))}<div class="meta">${x.it&&x.it.sap?x.it.sap+' · ':''}${esc(x.u)}${x.s===null?' · <span class="tag">sin conteo</span>':''}</div></td>${M.cols.map(c=>{
-        if(!(c in x.plan))return '<td class="n mute">—</td>';const o=x.plan[c];return `<td class="n${o?'':' mute'}">${o?fmtN(o)+(x.pk>1?` <span class="u">caja${o===1?'':'s'}</span>`:''):'0'}</td>`}).join('')}</tr>`});
+      h+=`<tr><td>${esc(pxName(x))}<div class="meta">${x.it&&x.it.sap?x.it.sap+' · ':''}${x.pk>1?`caja de ${fmtN(x.pk)} ${esc(x.u)}`:esc(x.u)}${x.s===null?' · <span class="tag">sin conteo</span>':x.src.h?` · hay ${pxF(x.s)} (inventario del ${x.src.d.getDate()}/${x.src.d.getMonth()+1})`:` · hay ${pxF(x.s)}`} · <button class="lnk" data-pr="${esc(x.n)}">Presentación</button></div></td>${M.cols.map(c=>{
+        if(!(c in x.plan))return '<td class="n mute">—</td>';const o=x.plan[c];return `<td class="n${o?'':' mute'}">${o?fmtN(o)+(x.pk>1?` <span class="u">caja${o===1?'':'s'}</span>`:''):'0'}</td>`}).join('')}</tr>`;
+      if(pxPresRow===x.n)h+=`<tr><td colspan="${M.cols.length+1}">${pxPresForm(x)}</td></tr>`});
     h+='</tbody></table></div>';
-    h+=`<p class="note">Cantidad para pedir en cada entrega, en la unidad del reporte. La leche de vaca va en cajas de 12 litros, y su uso y lo que "hay" van en litros. Cubre el uso entre esa entrega y la siguiente más ${fmtN(pxSeg())} día${pxSeg()===1?'':'s'} de reserva (o el mínimo del catálogo si es mayor), descontando lo que se calcula que quedará ese día según el conteo actual. "—" = ese día no llega (la leche llega solo ${pxLeche().map(d=>PX_DIAL[d]).join(' y ')}). Sin conteo se calcula como si hubiera 0.</p>`;
+    h+=`<p class="note">Cantidad para pedir en cada entrega. Lo que viene por caja (como la stevia o la leche de vaca, 12 L) se pide en cajas completas; lo demás, en la unidad del reporte. "Hay" es el conteo actual o, si no hay, el último inventario guardado, menos lo que se calcula que se usó desde ese día. Toca "Presentación" para corregir cuánto trae una caja o si se cuenta en cajas. Cubre el uso entre esa entrega y la siguiente más ${fmtN(pxSeg())} día${pxSeg()===1?'':'s'} de reserva (o el mínimo del catálogo si es mayor), descontando lo que se calcula que quedará ese día según el conteo actual. "—" = ese día no llega (la leche llega solo ${pxLeche().map(d=>PX_DIAL[d]).join(' y ')}). Sin conteo se calcula como si hubiera 0.</p>`;
     h+=`<div class="actions"><select id="pxPdfD" class="per" aria-label="Entrega para el PDF">${M.cols.map(c=>`<option value="${c}">${pxD(new Date(c+'T00:00'))}</option>`).join('')}</select><button class="btn pri" id="pxPdf">Descargar pedido (PDF)</button></div><p class="note" id="pdfMsg" hidden></p>`;
   }
   /* Proyección */
@@ -113,10 +141,19 @@ function pedidos(){
     h+=`<div class="tbl"><table class="px"><thead><tr><th>Insumo</th><th class="r">Uso/día</th><th class="r">${pxH} días</th><th class="r">Hay</th><th class="r">Dura</th></tr></thead><tbody>`;
     vis.forEach(x=>{const c=x.it?x.it.c:-1;if(c!==last){last=c;h+=`<tr class="grp"><td colspan="5">${c<0?'Sin vincular al catálogo':esc(DATA.cats[c])}</td></tr>`}
       const cov=x.cover===null?'—':x.cover>=60?'60+ días':`${fmtN(Math.floor(x.cover*10)/10)} d<div class="meta" style="justify-content:flex-end">${pxD(pxAdd(t0,Math.floor(x.cover)))}</div>`;
-      h+=`<tr><td>${esc(pxName(x))}<div class="meta">${esc(x.u)}</div></td><td class="n">${pxF(x.r)}</td><td class="n">${pxF(x.proj)}</td><td class="n">${x.s===null?'—':fmtN(x.s)}</td><td class="n" style="${x.short?'color:var(--crit)':''}">${cov}</td></tr>`});
+      h+=`<tr><td>${esc(pxName(x))}<div class="meta">${esc(x.u)}</div></td><td class="n">${pxF(x.r)}</td><td class="n">${pxF(x.proj)}</td><td class="n">${x.s===null?'—':pxF(x.s)}</td><td class="n" style="${x.short?'color:var(--crit)':''}">${cov}</td></tr>`});
     h+='</tbody></table></div><p class="note">Dura = días que dura lo contado al ritmo de uso diario. En rojo, lo que se acaba antes de que llegue su próxima entrega.</p>';
   }
   return h+pxLinkHTML(M)+pxSettingsHTML()+pxReportsHTML(M);
+}
+function pxPresForm(x){
+  const u=esc(x.u);
+  return `<div class="addf" style="margin:4px 0">
+    <label for="pxPk">¿Cuántos ${u} trae una caja?</label><input id="pxPk" inputmode="decimal" value="${x.pk}">
+    <label for="pxCin">En el conteo e inventario semanal se cuenta en</label>
+    <select id="pxCin" class="per"><option value="caja"${x.cin==='caja'?' selected':''}>Cajas</option><option value="u"${x.cin==='u'?' selected':''}>${u} (piezas sueltas)</option></select>
+    <p class="note" style="margin:0">${x.auto>1?`Del nombre del reporte salió caja de ${fmtN(x.auto)}.`:'Pon 1 si se pide por pieza.'} El pedido sale en cajas completas y descuenta lo que hay.</p>
+    <div class="actions" style="margin-top:6px"><button class="btn pri" id="pxPrOk" data-n="${esc(x.n)}">Guardar</button><button class="btn" id="pxPrNo">Cancelar</button></div></div>`;
 }
 function pxLinkHTML(M){
   const un=M.rows.filter(x=>!x.it);
@@ -202,7 +239,7 @@ async function pxMakePdf(key){
   const d=new Date(key+'T00:00'),{jsPDF}=window.jspdf,doc=new jsPDF({unit:'pt',format:'letter'});
   doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Pedido sugerido',40,46);
   doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`Entrega del ${PX_DIAL[d.getDay()]} ${d.toLocaleDateString('es-MX')} · ${rows.length} insumos · hecho el ${new Date().toLocaleDateString('es-MX')}`,40,63);
-  doc.autoTable({startY:76,head:[['SAP','INSUMO','UNIDAD','HAY','PEDIR']],body:rows.map(x=>[x.it&&x.it.sap||'',pxName(x),x.pk>1?`caja ${x.pk} L`:x.u,x.s===null?'—':fmtN(x.s),fmtN(x.plan[key])]),
+  doc.autoTable({startY:76,head:[['SAP','INSUMO','UNIDAD','HAY','PEDIR']],body:rows.map(x=>[x.it&&x.it.sap||'',pxName(x),x.pk>1?`caja ${fmtN(x.pk)} ${x.milk?'L':x.u}`:x.u,x.s===null?'—':pxF(x.s)+' '+x.u,fmtN(x.plan[key])]),
     styles:{font:'helvetica',fontSize:9.5,cellPadding:4},headStyles:{fillColor:[31,95,191],textColor:255},
     columnStyles:{0:{cellWidth:60},2:{cellWidth:80},3:{cellWidth:50,halign:'right'},4:{cellWidth:55,halign:'right'}},margin:{left:40,right:40}});
   const name=`pedido-${key}.pdf`;
@@ -213,6 +250,10 @@ function bindPedidos(){
   document.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{pxH=+b.dataset.h;render()});
   document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{pxFil=b.dataset.f;render()});
   const pb=$('pxPdf');if(pb)pb.onclick=()=>pxMakePdf($('pxPdfD').value);
+  document.querySelectorAll('[data-pr]').forEach(b=>b.onclick=()=>{pxPresRow=pxPresRow===b.dataset.pr?null:b.dataset.pr;render()});
+  const po=$('pxPrOk');if(po){$('pxPrNo').onclick=()=>{pxPresRow=null;render()};
+    po.onclick=()=>{const v=parseFloat(String($('pxPk').value).replace(',','.'));if(isNaN(v)||v<=0||v>100000){$('pxPk').focus();return}
+      const o={p:v,c:$('pxCin').value};pxSave({pres:{[po.dataset.n]:o}});PX.pres=Object.assign({},PX.pres,{[po.dataset.n]:o});pxPresRow=null;render()}}
   const lt=$('pxLinkT');if(lt)lt.onclick=()=>{pxLinkOpen=!pxLinkOpen;pxLinkRow=null;render()};
   document.querySelectorAll('[data-lr]').forEach(b=>b.onclick=()=>{pxLinkRow=pxLinkHTML.list[+b.dataset.lr].n;render()});
   document.querySelectorAll('[data-ln]').forEach(s=>{s.focus();s.onchange=()=>{const v=+s.value;pxSave({link:{[s.dataset.ln]:v<0?-1:v}});
