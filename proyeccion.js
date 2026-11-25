@@ -10,7 +10,7 @@ const PX_LINK0={'301427 Leche Entera Cj/6 Pzas/2L':260,'306517 Leche Deslact Sup
   '306035 Leche Light 1 LT':263,'306577 YogurtNaturalSinAzu900gr':265,'Media Baguette':231,'Salsa Panettone 1.86lt':215,
   'Toffee Nut Sprinkles Topping 11o':102,'Topping Cranberry Azucar1bt 141g':105,'Topping Salsa Cranberry1bte 12':103};
 const PX_DIA=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],PX_DIAL=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-let pxPresRow=null,PX={},pxH=7,pxDel=null,pxUp=null,pxErr='',pxMsg='',pxLinkOpen=false,pxLinkRow=null,pxSet=false,pxFil='todo',pxDelRep=null;
+let pxPacksOpen=false,pxPacksFil='falta',pxPresRow=null,PX={},pxH=7,pxDel=null,pxUp=null,pxErr='',pxMsg='',pxLinkOpen=false,pxLinkRow=null,pxSet=false,pxFil='todo',pxDelRep=null;
 const pxDoc=()=>root.collection('config').doc('proyeccion');
 function proySub(){pxDoc().onSnapshot(d=>{PX=d.data()||{};if(view==='pedidos')softRender()},writeErr)}
 const pxDias=()=>Array.isArray(PX.dias)&&PX.dias.length?PX.dias:[3,6];
@@ -27,18 +27,26 @@ const pxCeil=x=>Math.ceil(x-1e-9);
 /* Leche que llega aparte (Lala): solo las leches de vaca del catálogo. */
 /* La leche de vaca se pide por caja: 12 litros (12 piezas de 1 L). */
 const PX_CAJA_LECHE=12;
-/* Piezas por caja según el nombre del reporte: "CJ/2000 PZAS", "Cj/12 Pzas", "12/cs". Solo cuando el reporte cuenta por pieza. */
+/* Piezas por caja según el nombre (del reporte o del catálogo): "CJ/2000 PZAS", "Cj20pzas", "C/12 Pzas", "12/cs",
+   "Cj10bol100pzas" (10 bolsas de 100), "Cj12blist3pza". Devuelve cuántas unidades del reporte trae una caja, o 1 si no se sabe. */
 function pxPackAuto(n,u){
-  const m=String(n).match(/\bc(?:j|ja|s)\.?\s*\/\s*(\d{1,5})/i)||String(n).match(/\b(\d{1,4})\s*\/\s*cs\b/i);if(!m)return 1;
-  const k=+m[1];if(!(k>1))return 1;
-  /* "Cj/6 Li" = 6 litros, "Cja/12 Bliste" = 12 blísters: el número ya va en la unidad del reporte. */
-  if(new RegExp('/\\s*'+k+'\\s*(li|lt|l|blis)','i').test(n))return k;
+  n=String(n||'');
+  const m=n.match(/c(?:ja|j|i|s|u)?\.?\s*\/?\s*(\d{1,5})(?=\s|$|\/|pz|pt|bol|bli|lta|rol|[^a-z0-9])(?:\s*(boli|bol|lta|pt|bliste|blist|blis)\s*\/?\s*(?:(\d{1,5})(?!\d|\s*g))?)?/i);
+  const cs=n.match(/\b(\d{1,4})\s*\/\s*cs\b/i);
+  if(!m&&!cs)return 1;
+  const k=m?+m[1]:+cs[1],kind=m&&m[2]?m[2].toLowerCase():'',inner=m&&m[3]?+m[3]:0;if(!(k>1))return 1;
   const code=String(u||'').split(':')[0].trim().toUpperCase(),rest=String(u||'').split(':')[1]||'';
-  if(code==='BLI'){const b=rest.match(/(\d+)\s*pz/i);return b?Math.max(1,Math.round(k/+b[1])):1}
-  if(code==='LT'){const l=String(n).match(/\/\s*(\d+(?:[.,]\d+)?)\s*(?:l|lt|li)\b/i)||String(n).match(/\b(\d+(?:[.,]\d+)?)\s*(?:lt|li)\b/i);
+  const per=(rest.match(/(\d+)\s*pz/i)||[])[1];
+  if(kind.startsWith('bli'))return code==='BLI'?k:k*(inner||+per||1);
+  if(code==='BLI')return per?Math.max(1,Math.round(k*(inner||1)/+per)):1;
+  if(code==='LT'){
+    if(new RegExp('c\\w{0,2}\\.?\\s*\\/?\\s*'+k+'\\s*(li|lt|l)\\b','i').test(n))return k;
+    const l=n.match(/\/\s*(\d+(?:[.,]\d+)?)\s*(?:l|lt|li)\b/i)||n.match(/\b(\d+(?:[.,]\d+)?)\s*(?:lt|li)\b/i);
     return l?Math.round(k*parseFloat(l[1].replace(',','.'))*100)/100:1}
-  return k;
+  return k*(inner||1);
 }
+/* Cajas que dijo el usuario (nombre como sale en el reporte). */
+const PX_PACK0={'Bis Pan De Chocolate Margarina C':68,'BIS GALLETA CHISPAS/CHOCO CJ':20,'BIS GALLETA RED VELVET CJ':20};
 /* Presentación de cada insumo: {p: unidades del reporte por caja, c: 'caja' si se cuenta en cajas, 'u' si en unidades del reporte}. */
 const pxPres=()=>PX.pres||{};
 const pxIsMilk=it=>!!it&&it.c===9&&/^leche (entera|deslactosada|light|lala)/i.test(it.n||'');
@@ -87,7 +95,7 @@ function pxModel(){
     const it=m[n]!==null?byId[m[n]]:null,milk=pxIsMilk(it);
     /* Leche de vaca: cada unidad del reporte es una pieza de 1 L y el pedido sale en cajas de 12 L. */
     const r=ndays?tot[n]/ndays*f:0,pr=pxPres()[n]||{};
-    const auto=milk?PX_CAJA_LECHE:pxPackAuto(n,unit[n]),pk=pr.p>0?+pr.p:auto,cin=pr.c||(milk||pk<=1?'u':'caja');
+    const pa=pxPackAuto(n,unit[n]),auto=milk?PX_CAJA_LECHE:PX_PACK0[n]||(pa>1?pa:it?pxPackAuto(it.n,unit[n]):1),pk=pr.p>0?+pr.p:auto,cin=pr.c||(milk||pk<=1?'u':'caja');
     /* Lo que hay: el conteo actual o, si no hay, el último inventario guardado. Se le resta lo que se usó desde ese día. */
     const src=pxStock(it),k=cin==='caja'?pk:1;
     const s=src?Math.max(0,src.q*k-r*pxDiff(src.d,t0)):null;
@@ -142,7 +150,7 @@ function pedidos(){
       h+=`<tr><td>${esc(pxName(x))}<div class="meta">${esc(x.u)}</div></td><td class="n">${pxF(x.r)}</td><td class="n">${pxF(x.proj)}</td><td class="n">${x.s===null?'—':pxF(x.s)}</td><td class="n" style="${x.short?'color:var(--crit)':''}">${cov}</td></tr>`});
     h+='</tbody></table></div><p class="note">Dura = días que dura lo contado al ritmo de uso diario. En rojo, lo que se acaba antes de que llegue su próxima entrega.</p>';
   }
-  return h+pxLinkHTML(M)+pxSettingsHTML()+pxReportsHTML(M);
+  return h+pxPacksHTML(M)+pxLinkHTML(M)+pxSettingsHTML()+pxReportsHTML(M);
 }
 function pxPresForm(x){
   const u=esc(x.u);
@@ -152,6 +160,22 @@ function pxPresForm(x){
     <select id="pxCin" class="per"><option value="caja"${x.cin==='caja'?' selected':''}>Cajas</option><option value="u"${x.cin==='u'?' selected':''}>${u} (piezas sueltas)</option></select>
     <p class="note" style="margin:0">${x.auto>1?`Del nombre del reporte salió caja de ${fmtN(x.auto)}.`:'Pon 1 si se pide por pieza.'} El pedido sale en cajas completas y descuenta lo que hay.</p>
     <div class="actions" style="margin-top:6px"><button class="btn pri" id="pxPrOk" data-n="${esc(x.n)}">Guardar</button><button class="btn" id="pxPrNo">Cancelar</button></div></div>`;
+}
+/* Lista para revisar y llenar las piezas por caja de todos los insumos del reporte. */
+function pxPacksHTML(M){
+  const own=pxPres(),src=x=>own[x.n]&&own[x.n].p>0?'tuyo':x.auto>1?'auto':'falta';
+  const miss=M.rows.filter(x=>src(x)==='falta').length;
+  let h=`<div class="cat">Piezas por caja</div><p class="note" style="margin-top:0">${M.rows.length-miss} de ${M.rows.length} insumos ya tienen cuánto trae una caja (del nombre del reporte o del catálogo, o porque lo pusiste tú). ${miss?`<b>${miss} sin dato</b>: se piden por pieza hasta que lo llenes.`:''} <button class="lnk" id="pxPacksT">${pxPacksOpen?'Ocultar':'Revisar y llenar'}</button></p>`;
+  if(!pxPacksOpen)return h;
+  h+=`<div class="seg" role="group" aria-label="Filtro de cajas">${[['falta','Sin dato'],['todo','Todos']].map(([k,l])=>`<button class="chip" data-pf="${k}" aria-pressed="${pxPacksFil===k}">${l}</button>`).join('')}</div>`;
+  const list=M.rows.filter(x=>pxPacksFil==='todo'||src(x)==='falta').slice().sort((a,b)=>pxName(a).localeCompare(pxName(b)));
+  if(!list.length)return h+'<p class="note">Todos tienen dato.</p>';
+  h+=`<div class="tbl"><table><thead><tr><th>Insumo</th><th class="r">Por caja</th><th>Se cuenta en</th></tr></thead><tbody>${list.map(x=>{const k=esc(x.n),sr=src(x);
+    return `<tr><td>${esc(pxName(x))}<div class="meta">${esc(x.u)} · ${sr==='tuyo'?'lo pusiste tú':sr==='auto'?'sale del nombre':'<span class="tag">sin dato</span>'}</div></td>
+    <td class="n"><input class="per" style="width:78px;text-align:right" inputmode="decimal" data-pk="${k}" value="${sr==='falta'?'':x.pk}" placeholder="?" aria-label="Unidades por caja de ${esc(pxName(x))}"></td>
+    <td><select class="per" data-pc="${k}" aria-label="Se cuenta en"><option value="caja"${x.cin==='caja'?' selected':''}>Cajas</option><option value="u"${x.cin==='u'?' selected':''}>Sueltos</option></select></td></tr>`}).join('')}</tbody></table></div>
+  <p class="note">"Por caja" va en la unidad del reporte (piezas, litros, bolsas…). Pon 1 si se pide por pieza. Se guarda al salir de cada casilla y es para toda la tienda.</p>`;
+  return h;
 }
 function pxLinkHTML(M){
   const un=M.rows.filter(x=>!x.it);
@@ -252,6 +276,13 @@ function bindPedidos(){
   const po=$('pxPrOk');if(po){$('pxPrNo').onclick=()=>{pxPresRow=null;render()};
     po.onclick=()=>{const v=parseFloat(String($('pxPk').value).replace(',','.'));if(isNaN(v)||v<=0||v>100000){$('pxPk').focus();return}
       const o={p:v,c:$('pxCin').value};pxSave({pres:{[po.dataset.n]:o}});PX.pres=Object.assign({},PX.pres,{[po.dataset.n]:o});pxPresRow=null;render()}}
+  const pkt=$('pxPacksT');if(pkt)pkt.onclick=()=>{pxPacksOpen=!pxPacksOpen;render()};
+  document.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>{pxPacksFil=b.dataset.pf;render()});
+  const setPres=(n,o)=>{const cur=Object.assign({},(PX.pres||{})[n],o);pxSave({pres:{[n]:cur}});PX.pres=Object.assign({},PX.pres,{[n]:cur})};
+  const curRow=n=>pxModel().rows.find(x=>x.n===n);
+  document.querySelectorAll('[data-pk]').forEach(e=>e.onchange=()=>{const v=parseFloat(String(e.value).replace(',','.'));if(isNaN(v)||v<=0||v>100000){e.value='';return}
+    const own=(PX.pres||{})[e.dataset.pk];setPres(e.dataset.pk,{p:v,c:own&&own.c?own.c:v>1?'caja':'u'});softRender()});
+  document.querySelectorAll('[data-pc]').forEach(e=>e.onchange=()=>{const x=curRow(e.dataset.pc);setPres(e.dataset.pc,{p:x?x.pk:1,c:e.value});softRender()});
   const lt=$('pxLinkT');if(lt)lt.onclick=()=>{pxLinkOpen=!pxLinkOpen;pxLinkRow=null;render()};
   document.querySelectorAll('[data-lr]').forEach(b=>b.onclick=()=>{pxLinkRow=pxLinkHTML.list[+b.dataset.lr].n;render()});
   document.querySelectorAll('[data-ln]').forEach(s=>{s.focus();s.onchange=()=>{const v=+s.value;pxSave({link:{[s.dataset.ln]:v<0?-1:v}});
