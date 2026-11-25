@@ -27,8 +27,6 @@ const pxCeil=x=>Math.ceil(x-1e-9);
 /* Leche que llega aparte (Lala): solo las leches de vaca del catálogo. */
 /* La leche de vaca se pide por caja: 12 litros (12 piezas de 1 L). */
 const PX_CAJA_LECHE=12;
-/* Litros por unidad del reporte: "LT: 2 Litros" = 2, "LT: lt" = 1. */
-const pxLitros=u=>{const m=String(u||'').match(/(\d+(?:[.,]\d+)?)\s*(l|lt|litros?)\b/i);return m?parseFloat(m[1].replace(',','.')):1};
 /* Piezas por caja según el nombre del reporte: "CJ/2000 PZAS", "Cj/12 Pzas", "12/cs". Solo cuando el reporte cuenta por pieza. */
 function pxPackAuto(n,u){
   const m=String(n).match(/\bc(?:j|ja|s)\.?\s*\/\s*(\d{1,5})/i)||String(n).match(/\b(\d{1,4})\s*\/\s*cs\b/i);if(!m)return 1;
@@ -87,8 +85,8 @@ function pxModel(){
   const f=1+pxAdj()/100,t0=pxDay0(),seg=pxSeg();
   const rows=names.map(n=>{
     const it=m[n]!==null?byId[m[n]]:null,milk=pxIsMilk(it);
-    /* Leche: el uso se pasa a litros y el pedido sale en cajas de 12 L. */
-    const lpu=milk?pxLitros(unit[n]):1,r=ndays?tot[n]/ndays*f*lpu:0,pr=pxPres()[n]||{};
+    /* Leche de vaca: cada unidad del reporte es una pieza de 1 L y el pedido sale en cajas de 12 L. */
+    const r=ndays?tot[n]/ndays*f:0,pr=pxPres()[n]||{};
     const auto=milk?PX_CAJA_LECHE:pxPackAuto(n,unit[n]),pk=pr.p>0?+pr.p:auto,cin=pr.c||(milk||pk<=1?'u':'caja');
     /* Lo que hay: el conteo actual o, si no hay, el último inventario guardado. Se le resta lo que se usó desde ese día. */
     const src=pxStock(it),k=cin==='caja'?pk:1;
