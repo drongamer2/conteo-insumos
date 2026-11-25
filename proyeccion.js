@@ -28,7 +28,8 @@ const pxCeil=x=>Math.ceil(x-1e-9);
 const pxIsMilk=it=>!!it&&it.c===9&&/^leche (entera|deslactosada|light|lala)/i.test(it.n||'');
 function pxReports(){
   const r=Object.assign({},(PX.del||[]).includes('base')?{}:{base:PX_BASE},PX.rep||{});
-  return Object.entries(r).map(([k,v])=>Object.assign({k},v)).filter(v=>v&&Array.isArray(v.i)).sort((a,b)=>a.f<b.f?1:-1);
+  /* En Firestore cada insumo va como {n,u,q} (no acepta listas dentro de listas); aquí se usa como [n,u,q]. */
+  return Object.entries(r).filter(([k,v])=>v&&Array.isArray(v.i)).map(([k,v])=>Object.assign({k},v,{i:v.i.map(x=>Array.isArray(x)?x:[x.n,x.u,x.q])})).sort((a,b)=>a.f<b.f?1:-1);
 }
 const pxDaysOf=r=>Math.max(1,pxDiff(new Date(r.f+'T00:00'),new Date(r.t+'T00:00'))+1);
 /* Parecido entre nombres: trigramas de letras sin espacios. */
@@ -217,7 +218,7 @@ function bindPedidos(){
     if(isNaN(v)||v<lo||v>hi){e.value=k==='seg'?pxSeg():pxAdj();return}PX[k]=v;pxSave({[k]:v});render()}});
   const f=$('pxFile');if(f)f.onchange=()=>f.files[0]&&pxReadPdf(f.files[0]);
   if(pxUp){$('pxCancel').onclick=()=>{pxUp=null;render()};
-    $('pxSave').onclick=()=>{const k=pxUp.f+'_'+pxUp.t,o={f:pxUp.f,t:pxUp.t,g:pxUp.g||null,i:pxUp.i};
+    $('pxSave').onclick=()=>{const k=pxUp.f+'_'+pxUp.t,o={f:pxUp.f,t:pxUp.t,g:pxUp.g||null,i:pxUp.i.map(([n,u,q])=>({n,u,q}))};
       const del=(PX.del||[]).filter(x=>x!==k);
       if(k===PX_BASE.f+'_'+PX_BASE.t&&!del.includes('base'))del.push('base'); /* el mismo día que el incluido: lo reemplaza */
       pxSave({rep:{[k]:o},del});PX.rep=Object.assign({},PX.rep,{[k]:o});PX.del=del;
